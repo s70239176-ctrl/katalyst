@@ -397,7 +397,7 @@ export default function App() {
     <div className="flex min-h-screen flex-col">
       <Header page={page} onNavigate={(p) => navigate(p)} wallet={wallet} balance={balance} network={network} connecting={connecting} onConnect={() => void handleConnect()} />
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+      <main className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-6 md:px-8 lg:px-[62px]">
         {wrongNetwork && (
           <div className="mb-6">
             <Notice tone="warn" title="Wrong network" action={<button type="button" className="btn btn-sm" onClick={() => void switchToChain().then(syncWallet)}>Switch network</button>}>
@@ -522,7 +522,7 @@ export default function App() {
                 </section>
               )}
 
-              <section className="card p-4" aria-label="Route diagram">
+              <section className="card grid-tex p-4" aria-label="Route diagram">
                 <RouteVisualizer stage={stage} route={diagramRoute} />
               </section>
             </div>
@@ -545,7 +545,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-line py-6">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 text-xs text-subtle">
+        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-2 px-4 text-xs text-subtle md:px-8 lg:px-[62px]">
           <span>Katalyst · Testnet software, unaudited. Do not use with funds you cannot lose.</span>
           <span>GenLayer decides · {activeChain().name} settles</span>
         </div>

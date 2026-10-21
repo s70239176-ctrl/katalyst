@@ -26,7 +26,7 @@ interface HeaderProps {
 
 const NETWORK_LABEL: Record<NetworkStatus, { dot: string; label: string }> = {
   connecting: { dot: 'bg-warn', label: 'Connecting' },
-  online: { dot: 'bg-accent', label: '' },
+  online: { dot: 'bg-ok', label: '' },
   offline: { dot: 'bg-danger', label: 'Network unreachable' },
 };
 
@@ -43,27 +43,21 @@ export function Header({ page, onNavigate, wallet, balance, network, connecting,
     return () => window.removeEventListener('mousedown', close);
   }, [menu]);
 
+  const nav = NAV.filter((n) => n.id !== 'positions' || chain.version === 2);
+
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-bg/85 backdrop-blur">
-      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-4">
-        <div className="flex items-center gap-8">
-          <button type="button" onClick={() => onNavigate('protocol')} className="flex items-center gap-2.5" aria-label="Katalyst home">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-sm font-bold text-[var(--accent-ink)]" aria-hidden="true">
-              K
-            </span>
-            <span className="text-[15px] font-semibold tracking-tight">Katalyst</span>
+    <header className="app-hdr">
+      <div className="bar">
+        <div className="flex items-center gap-6">
+          <button type="button" onClick={() => onNavigate('protocol')} className="app-brand" aria-label="Katalyst home">
+            <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 2h5v8.2L15.2 2H22l-9 10 9.4 10H15.6L8 13.8V22H3z" fill="#c4ff42" />
+            </svg>
+            <span className="word">KATALYST</span>
           </button>
-          <nav aria-label="Primary" className="hidden gap-1 md:flex">
-            {NAV.filter((n) => n.id !== 'positions' || chain.version === 2).map((n) => (
-              <button
-                key={n.id}
-                type="button"
-                onClick={() => onNavigate(n.id)}
-                aria-current={page === n.id ? 'page' : undefined}
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                  page === n.id ? 'bg-surface2 text-fg' : 'text-muted hover:text-fg'
-                }`}
-              >
+          <nav aria-label="Primary" className="app-nav hidden md:flex">
+            {nav.map((n) => (
+              <button key={n.id} type="button" onClick={() => onNavigate(n.id)} aria-current={page === n.id ? 'page' : undefined}>
                 {n.label}
               </button>
             ))}
@@ -72,13 +66,13 @@ export function Header({ page, onNavigate, wallet, balance, network, connecting,
 
         <div className="flex items-center gap-2">
           {CHAINS.length > 1 ? (
-            <label className="badge hidden items-center gap-2 sm:inline-flex">
-              <span className={`h-1.5 w-1.5 rounded-full ${net.dot}`} aria-hidden="true" />
+            <label className="app-chip hidden sm:inline-flex">
+              <span className={`app-dot ${net.dot}`} aria-hidden="true" />
               <span className="sr-only">Settlement chain</span>
               <select
                 value={chain.key}
                 aria-label="Settlement chain"
-                className="cursor-pointer bg-transparent text-xs outline-none"
+                className="cursor-pointer bg-transparent text-[11px] outline-none"
                 onChange={(e) => {
                   setActiveChain(e.target.value);
                   window.location.reload(); // rebuild every cached provider and SDK instance for the new chain
@@ -92,8 +86,8 @@ export function Header({ page, onNavigate, wallet, balance, network, connecting,
               </select>
             </label>
           ) : (
-            <span className="badge hidden sm:inline-flex" aria-live="polite">
-              <span className={`h-1.5 w-1.5 rounded-full ${net.dot}`} />
+            <span className="app-chip hidden sm:inline-flex" aria-live="polite">
+              <span className={`app-dot ${net.dot}`} />
               {net.label}
             </span>
           )}
@@ -124,15 +118,9 @@ export function Header({ page, onNavigate, wallet, balance, network, connecting,
         </div>
       </div>
 
-      <nav aria-label="Primary mobile" className="flex gap-1 overflow-x-auto border-t border-line px-3 py-2 md:hidden">
-        {NAV.filter((n) => n.id !== 'positions' || chain.version === 2).map((n) => (
-          <button
-            key={n.id}
-            type="button"
-            onClick={() => onNavigate(n.id)}
-            aria-current={page === n.id ? 'page' : undefined}
-            className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium ${page === n.id ? 'bg-surface2 text-fg' : 'text-muted'}`}
-          >
+      <nav aria-label="Primary mobile" className="app-nav flex overflow-x-auto border-t border-line px-2 md:hidden">
+        {nav.map((n) => (
+          <button key={n.id} type="button" onClick={() => onNavigate(n.id)} aria-current={page === n.id ? 'page' : undefined}>
             {n.label}
           </button>
         ))}

@@ -1,49 +1,29 @@
 @import "tailwindcss";
 
-/* Design tokens. Dark by default; light follows the system setting. */
+/* Design tokens: the Katalyst dark technical palette (shared with the landing page). */
 :root {
-  color-scheme: dark light;
-  --bg: #0a0d12;
-  --surface: #10151c;
-  --surface-2: #161c26;
-  --line: #212a38;
-  --line-2: #2c374a;
-  --fg: #e8edf4;
-  --muted: #9ba6b6;
-  --subtle: #6c788b;
-  --accent: #3dd6a6;
-  --accent-ink: #04120c;
-  --accent-soft: rgba(61, 214, 166, 0.12);
-  --danger: #f87171;
-  --danger-soft: rgba(248, 113, 113, 0.12);
-  --warn: #f5b84b;
-  --warn-soft: rgba(245, 184, 75, 0.13);
-  --info: #6aa9ff;
-  --info-soft: rgba(106, 169, 255, 0.13);
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.25);
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #f5f7fa;
-    --surface: #ffffff;
-    --surface-2: #f0f3f8;
-    --line: #e1e7ef;
-    --line-2: #c9d3e0;
-    --fg: #0f172a;
-    --muted: #475569;
-    --subtle: #64748b;
-    --accent: #0c8f68;
-    --accent-ink: #ffffff;
-    --accent-soft: rgba(12, 143, 104, 0.1);
-    --danger: #dc2626;
-    --danger-soft: rgba(220, 38, 38, 0.08);
-    --warn: #b7791f;
-    --warn-soft: rgba(183, 121, 31, 0.1);
-    --info: #2563eb;
-    --info-soft: rgba(37, 99, 235, 0.08);
-    --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.06);
-  }
+  color-scheme: dark;
+  --bg: #05090c;
+  --surface: #080e12;
+  --surface-2: #0f1920;
+  --line: #1b2931;
+  --line-2: #2a3b46;
+  --fg: #f3f6f8;
+  --muted: #a0b0bf;
+  --subtle: #65798b;
+  --accent: #c4ff42;
+  --accent-ink: #071006;
+  --accent-soft: rgba(196, 255, 66, 0.1);
+  --ok: #42e58b;
+  --ok-soft: rgba(66, 229, 139, 0.1);
+  --danger: #ff7a7a;
+  --danger-soft: rgba(255, 107, 107, 0.11);
+  --warn: #e7b84a;
+  --warn-soft: rgba(231, 184, 74, 0.12);
+  --info: #4da3ff;
+  --info-soft: rgba(36, 141, 255, 0.13);
+  --blue: #248dff;
+  --shadow: none;
 }
 
 @theme inline {
@@ -59,6 +39,7 @@
   --color-danger: var(--danger);
   --color-warn: var(--warn);
   --color-info: var(--info);
+  --color-ok: var(--ok);
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -74,8 +55,8 @@ body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.55;
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   font-feature-settings: "cv11", "ss01";
 }
@@ -87,21 +68,26 @@ body {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 6px;
+  border-radius: 4px;
 }
 
 /* ---- Components ------------------------------------------------------------------ */
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: var(--shadow);
+  border-radius: 4px;
+}
+
+/* Faint technical grid, used on diagram panels only. */
+.grid-tex {
+  background-image: linear-gradient(rgba(105, 145, 163, 0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(105, 145, 163, 0.06) 1px, transparent 1px);
+  background-size: 22px 22px;
 }
 
 .card-title {
-  font-size: 12px;
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--subtle);
 }
@@ -111,19 +97,20 @@ body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 40px;
+  height: 36px;
   padding: 0 16px;
-  border-radius: 10px;
+  border-radius: 4px;
   border: 1px solid var(--line-2);
-  background: var(--surface-2);
+  background: rgba(10, 17, 22, 0.6);
   color: var(--fg);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, opacity 0.15s;
 }
 .btn:hover:not(:disabled) {
-  border-color: var(--subtle);
+  border-color: #3b5362;
+  background: var(--surface-2);
 }
 .btn:disabled {
   opacity: 0.45;
@@ -134,10 +121,12 @@ body {
   border-color: var(--accent);
   color: var(--accent-ink);
   font-weight: 600;
+  box-shadow: 0 0 18px rgba(196, 255, 66, 0.16);
 }
 .btn-primary:hover:not(:disabled) {
-  filter: brightness(1.06);
-  border-color: var(--accent);
+  background: #d3ff6a;
+  border-color: #d3ff6a;
+  box-shadow: 0 0 22px rgba(196, 255, 66, 0.28);
 }
 .btn-ghost {
   background: transparent;
@@ -149,20 +138,20 @@ body {
   border-color: var(--line);
 }
 .btn-sm {
-  height: 32px;
+  height: 30px;
   padding: 0 12px;
-  font-size: 13px;
-  border-radius: 8px;
+  font-size: 12px;
+  border-radius: 4px;
 }
 
 .input {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--line-2);
-  border-radius: 10px;
+  border-radius: 4px;
   color: var(--fg);
-  padding: 10px 12px;
-  font-size: 15px;
+  padding: 9px 12px;
+  font-size: 14px;
   transition: border-color 0.15s;
 }
 .input:focus {
@@ -178,10 +167,10 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 24px;
-  padding: 0 9px;
-  border-radius: 999px;
-  font-size: 12px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 3px;
+  font-size: 11px;
   font-weight: 500;
   border: 1px solid var(--line-2);
   color: var(--muted);
@@ -189,8 +178,8 @@ body {
   white-space: nowrap;
 }
 .badge-ok {
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--ok);
+  background: var(--ok-soft);
   border-color: transparent;
 }
 .badge-bad {
@@ -218,7 +207,7 @@ body {
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 13px;
 }
 .table th,
 .table td {
@@ -231,13 +220,15 @@ body {
 .table th {
   text-align: left;
   font-weight: 500;
-  font-size: 12px;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
   color: var(--subtle);
   padding: 10px 14px;
   border-bottom: 1px solid var(--line);
 }
 .table td {
-  padding: 12px 14px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
 }
@@ -255,7 +246,7 @@ body {
   background: linear-gradient(90deg, var(--surface-2), var(--line), var(--surface-2));
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
-  border-radius: 8px;
+  border-radius: 3px;
 }
 @keyframes shimmer {
   to {
@@ -293,4 +284,97 @@ body {
   .edge-active {
     animation: none;
   }
+}
+
+
+/* ---- App header (matches the landing header) ------------------------------------------ */
+.app-hdr {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.app-hdr .bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 44px;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+@media (min-width: 768px) {
+  .app-hdr .bar {
+    padding: 0 32px;
+  }
+}
+@media (min-width: 1100px) {
+  .app-hdr .bar {
+    padding: 0 62px;
+  }
+}
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.app-brand .word {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+}
+.app-nav {
+  height: 44px;
+}
+.app-nav button {
+  position: relative;
+  height: 100%;
+  padding: 0 14px;
+  background: none;
+  border: 0;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s;
+  white-space: nowrap;
+}
+.app-nav button:hover {
+  color: var(--fg);
+}
+.app-nav button[aria-current='page'] {
+  color: var(--fg);
+}
+.app-nav button[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent);
+}
+.app-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  font-size: 11px;
+  color: var(--fg);
+}
+.app-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
 }
