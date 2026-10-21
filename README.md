@@ -106,6 +106,42 @@ cd ../frontend && cp .env.example .env && npm install && npm run dev
 CI (`.github/workflows/`, enabled once the repo token has the `workflow` scope): frontend build, relayer typecheck,
 Solidity tests + fuzz, solver tests, Slither, and an uptime check.
 
+## Roadmap: the next 2–3 months to mainnet
+
+What we plan to build between now and a mainnet launch. It is a plan, not a promise: mainnet depends on Portaldot's mainnet
+being available to deploy on, and on the audit finding nothing that needs a redesign. Each item targets a limitation listed
+under [Honest limitations](#honest-limitations) or in the [threat model](docs/THREAT_MODEL.md).
+
+### Month 1: harden what exists
+
+- [ ] **Multisig owner and timelock.** Move vault ownership from a single key to a multisig, with a timelock on relayer rotation and pool registration.
+- [ ] **Always-on settlement.** A keeper that advances intents without a browser polling them (scheduled functions or the always-on relayer in `relayer/`), so a closed tab never delays a settlement.
+- [ ] **Guardian as a service.** Run the delay-window guardian continuously with alerting, and publish its status on the Network page.
+- [ ] **Multi-RPC reads.** Cross-check events against more than one Portaldot RPC provider and fail loudly on disagreement, removing the single-RPC trust point.
+- [ ] **Indexer for history.** Replace per-page log scans with a small indexer, so the Activity and Recent settlements views show exact timestamps and full history, independent of RPC pruning.
+- [ ] **Audit preparation.** Freeze the v2 contract scope, expand the invariant and fuzz suite, add static analysis and gas reports to CI, and write the audit brief.
+
+### Month 2: remove single points of trust
+
+- [ ] **External security audit** of `KatalystVaultV2` and `PoolHub`, with fixes and a published report.
+- [ ] **Relayer quorum.** k-of-n signed attestations from independent operators, so no single relayer key can propose a route. Needs onboarding of at least two more operators first.
+- [ ] **Real pool strategies behind `PoolHub`.** Replace the demo pool addresses with strategy adapters that hold and invest funds, with per-pool caps and an emergency withdraw path.
+- [ ] **Live data for the solver.** Replace the placeholder yield and eco-score endpoints with real, source-attributed feeds, with staleness limits and a signed snapshot that validators agree on.
+- [ ] **Bug bounty** on the audited contracts, with a public scope and severity table.
+
+### Month 3: launch
+
+- [ ] **Mainnet deployment** with conservative limits (low deposit cap, allow-listed pools), raised in steps as the audit and monitoring history allow.
+- [ ] **More settlement chains.** Extend the multi-chain support that already works on a second EVM chain to additional chains, one solver and several vaults.
+- [ ] **Standing orders.** Recurring or conditional intents ("rebalance weekly into A-Tier pools") with an explicit authorisation model.
+- [ ] **Operator and user monitoring.** Prometheus and webhook alerts, a public status page, and per-wallet notifications for settlement, veto and refund events.
+- [ ] **Docs and SDK stabilisation.** Versioned SDK and CLI, an integration guide for third-party dApps, and migration notes from the testnet vaults.
+
+### Later, not committed
+
+Gasless first deposits (blocked today because $POT is native currency), account-abstraction wallets, and an on-chain light-client or proof
+of GenLayer results, which would remove the remaining trust in the relayer entirely.
+
 ## Honest limitations
 
 - **Unaudited testnet software.** The vault cannot verify GenLayer's result on-chain, so it trusts the relayer to relay the
