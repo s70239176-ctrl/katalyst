@@ -85,3 +85,7 @@ npm run deploy:evm         # deploy; writes VAULT_CONTRACT_ADDRESS into .env
   (redeploy ≈ 315 tPOT).
 - `owner` and `relayer` are `immutable` (no storage deposit): rotating the relayer means redeploying.
 - Untested against the live chain: end-to-end deposit → GenLayer → settle (needs a funded deployment and a deployed solver).
+
+## License
+
+[MIT](LICENSE)
