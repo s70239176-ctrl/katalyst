@@ -8,3 +8,5 @@ frontend/public/katalyst_vault.json
 contracts/evm/build/
 relayer/data/
 .claude/
+.env.*
+!.env.example

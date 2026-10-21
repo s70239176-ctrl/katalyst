@@ -4,8 +4,8 @@
  */
 export const POT_DECIMALS = 18;
 export const SS58_PREFIX = 42;
-export const CHAIN_ID = 420420777;
-export const TOKEN_SYMBOL = 'tPOT';
+// Chain-dependent values (chain id, token symbol, ...) live in ./chains. This module stays free of browser/Vite
+// dependencies so the SDK and CLI can use it from Node.
 
 export type IntentStatus = 'Pending' | 'Executed' | 'Rejected' | 'Cancelled';
 
@@ -199,8 +199,16 @@ export const POOL_LABELS: Readonly<Record<string, string>> = {
   '0x036a137130b01ede1cde55752f22c4b358845f59': 'Pool Gamma',
 };
 
+let extraPoolLabels: Readonly<Record<string, string>> = {};
+
+/** Registered by the chain registry: friendly names for the active chain's pools (lowercase addresses). */
+export function setPoolLabels(labels: Readonly<Record<string, string>>): void {
+  extraPoolLabels = labels;
+}
+
 export function poolLabel(address: string): string {
-  return POOL_LABELS[address.toLowerCase()] ?? shortAddress(address);
+  const k = address.toLowerCase();
+  return extraPoolLabels[k] ?? POOL_LABELS[k] ?? shortAddress(address);
 }
 
 export function shortAddress(address: string): string {

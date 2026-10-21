@@ -6,6 +6,8 @@ interface ImportMetaEnv {
   readonly VITE_PORTALDOT_EVM_RPC?: string;
   readonly VITE_GENLAYER_CONTRACT?: string;
   readonly VITE_RELAYER_API?: string;
+  readonly VITE_CHAINS?: string;
+  readonly VITE_GENLAYER_FALLBACKS?: string;
 }
 
 interface ImportMeta {

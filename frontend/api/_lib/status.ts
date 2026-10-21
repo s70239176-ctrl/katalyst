@@ -1,9 +1,10 @@
 /**
  * Stateless operational status for the serverless relayer, computed from chain state at request time.
  * Backs /api/status (JSON for uptime monitors; HTTP 503 when unhealthy) and /api/metrics (Prometheus text).
+ * With several settlement chains configured, every chain is checked independently.
  */
 import { formatEther, getAddress, toBeHex } from 'ethers';
-import { CHAIN_ID, VAULT_ADDRESS, VAULT_DEPLOY_BLOCK, getProvider, getRelayerWallet, optionalEnv, retry } from './config.js';
+import { chains, getProvider, getRelayerWallet, optionalEnv, retry, type ChainCfg } from './config.js';
 import { genlayerChainName, genlayerContract, pingGenLayer } from './genlayer.js';
 import { vault } from './vault.js';
 
@@ -16,28 +17,25 @@ export interface StatusCheck {
   detail: string;
 }
 
-export interface StatusMetrics {
+export interface ChainMetrics {
+  key: string;
   headBlock: number;
   blockTimeSec: number;
-  relayerBalanceTpot: number;
+  relayerBalance: number;
   totalIntents: number;
-  windowDeposits: number;
-  windowSettled: number;
   pending: number;
   oldestPendingMinutes: number;
-  portaldotLatencyMs: number;
-  genlayerLatencyMs: number;
+  rpcLatencyMs: number;
 }
 
 export interface Status {
   ok: boolean;
   generatedAt: string;
   mode: 'serverless';
-  chainId: number;
-  vault: string;
-  genlayer: { chain: string; contract: string };
+  genlayer: { chain: string; contract: string; latencyMs: number };
+  chains: Array<{ key: string; name: string; chainId: number; vault: string }>;
   checks: StatusCheck[];
-  metrics: StatusMetrics;
+  metrics: ChainMetrics[];
 }
 
 const num = (name: string, fallback: number): number => {
@@ -56,43 +54,27 @@ async function timed<T>(fn: () => Promise<T>): Promise<{ value: T | null; ms: nu
   }
 }
 
-export async function computeStatus(): Promise<Status> {
-  const provider = getProvider();
-  const wallet = getRelayerWallet();
-  const v = vault();
-  const checks: StatusCheck[] = [];
-  const add = (id: string, label: string, level: Level, detail: string) => checks.push({ id, label, level, detail });
+async function checkChain(chain: ChainCfg, checks: StatusCheck[]): Promise<ChainMetrics> {
+  const provider = getProvider(chain);
+  const wallet = getRelayerWallet(chain);
+  const v = vault(chain);
+  const pre = chains().length > 1 ? `${chain.name}: ` : '';
+  const id = (s: string) => (chains().length > 1 ? `${chain.key}_${s}` : s);
+  const add = (s: string, label: string, level: Level, detail: string) => checks.push({ id: id(s), label: pre + label, level, detail });
 
   const minBalance = num('STATUS_MIN_BALANCE_TPOT', 2);
   const stuckMinutes = num('STATUS_STUCK_MINUTES', 15);
   const windowBlocks = num('STATUS_WINDOW_BLOCKS', 3000);
 
-  // Portaldot RPC + GenLayer RPC, in parallel.
-  const [head, gl] = await Promise.all([timed(() => retry(() => provider.getBlockNumber(), 2)), timed(() => pingGenLayer())]);
-
-  const metrics: StatusMetrics = {
-    headBlock: head.value ?? 0,
-    blockTimeSec: 0,
-    relayerBalanceTpot: 0,
-    totalIntents: 0,
-    windowDeposits: 0,
-    windowSettled: 0,
-    pending: 0,
-    oldestPendingMinutes: 0,
-    portaldotLatencyMs: head.ms,
-    genlayerLatencyMs: gl.ms,
-  };
+  const head = await timed(() => retry(() => provider.getBlockNumber(), 2));
+  const m: ChainMetrics = { key: chain.key, headBlock: head.value ?? 0, blockTimeSec: 0, relayerBalance: 0, totalIntents: 0, pending: 0, oldestPendingMinutes: 0, rpcLatencyMs: head.ms };
 
   if (head.value === null) {
-    add('portaldot_rpc', 'Portaldot RPC', 'fail', `Unreachable: ${head.error ?? 'no response'}`);
-  } else {
-    add('portaldot_rpc', 'Portaldot RPC', head.ms > 6000 ? 'warn' : 'ok', `Block ${head.value} in ${head.ms} ms`);
+    add('rpc', 'RPC', 'fail', `Unreachable: ${head.error ?? 'no response'}`);
+    return m;
   }
-  add('genlayer_rpc', 'GenLayer solver', gl.value === null ? 'fail' : gl.ms > 8000 ? 'warn' : 'ok', gl.value === null ? `Unreachable: ${gl.error ?? 'no response'}` : `Solver reachable in ${gl.ms} ms`);
+  add('rpc', 'RPC', head.ms > 6000 ? 'warn' : 'ok', `Block ${head.value} in ${head.ms} ms`);
 
-  if (head.value === null) return finish(checks, metrics);
-
-  // Relayer key + gas balance + vault counters.
   const [relayerOnChain, balance, total] = await Promise.all([
     timed(() => v.getFunction('relayer')() as Promise<string>),
     timed(() => provider.getBalance(wallet.address)),
@@ -104,26 +86,26 @@ export async function computeStatus(): Promise<Status> {
     add('relayer_key', 'Relayer key', match ? 'ok' : 'fail', match ? `${wallet.address} is the vault's relayer` : `Configured key ${wallet.address} is not the vault relayer ${relayerOnChain.value}`);
   }
   if (balance.value !== null) {
-    metrics.relayerBalanceTpot = Number(formatEther(balance.value));
-    add('relayer_balance', 'Relayer gas balance', metrics.relayerBalanceTpot < minBalance ? (metrics.relayerBalanceTpot < minBalance / 2 ? 'fail' : 'warn') : 'ok', `${metrics.relayerBalanceTpot.toFixed(2)} tPOT (alert below ${minBalance})`);
+    m.relayerBalance = Number(formatEther(balance.value));
+    add('relayer_balance', 'Relayer gas balance', m.relayerBalance < minBalance ? (m.relayerBalance < minBalance / 2 ? 'fail' : 'warn') : 'ok', `${m.relayerBalance.toFixed(2)} (alert below ${minBalance})`);
   } else add('relayer_balance', 'Relayer gas balance', 'fail', 'Could not read the balance');
-  metrics.totalIntents = total.value !== null ? Number(total.value) : 0;
+  m.totalIntents = total.value !== null ? Number(total.value) : 0;
 
-  // Block time from two recent blocks (recent blocks are always served; old ones are pruned).
+  // Block time from two recent blocks (recent blocks are always served; old ones may be pruned).
   try {
     const [a, b] = await Promise.all([
       provider.send('eth_getBlockByNumber', [toBeHex(head.value), false]) as Promise<{ timestamp: string }>,
       provider.send('eth_getBlockByNumber', [toBeHex(head.value - 40), false]) as Promise<{ timestamp: string }>,
     ]);
-    metrics.blockTimeSec = Math.max(1, (Number(BigInt(a.timestamp)) - Number(BigInt(b.timestamp))) / 40);
+    m.blockTimeSec = Math.max(1, (Number(BigInt(a.timestamp)) - Number(BigInt(b.timestamp))) / 40);
   } catch {
-    metrics.blockTimeSec = 8;
+    m.blockTimeSec = 8;
   }
 
   // Stuck intents: deposited in the recent window, not settled, and older than the threshold.
   try {
-    const from = Math.max(VAULT_DEPLOY_BLOCK(), head.value - windowBlocks);
-    const address = getAddress(VAULT_ADDRESS());
+    const from = Math.max(chain.deployBlock, head.value - windowBlocks);
+    const address = getAddress(chain.vault);
     const topic = (n: string) => v.interface.getEvent(n)!.topicHash;
     const scan = async (topics: (string | string[])[]) => {
       const out: Awaited<ReturnType<typeof provider.getLogs>> = [];
@@ -133,30 +115,33 @@ export async function computeStatus(): Promise<Status> {
     const [deposits, settled] = await Promise.all([scan([topic('IntentDeposited')]), scan([[topic('IntentExecuted'), topic('IntentRejected'), topic('IntentCancelled')]])]);
     const done = new Set(settled.map((l) => BigInt(l.topics[1]!).toString()));
     const open = deposits.filter((l) => !done.has(BigInt(l.topics[1]!).toString()));
-    metrics.windowDeposits = deposits.length;
-    metrics.windowSettled = settled.length;
-    metrics.pending = open.length;
-    const oldest = open.reduce((m, l) => Math.min(m, l.blockNumber), head.value);
-    metrics.oldestPendingMinutes = open.length ? Math.round(((head.value - oldest) * metrics.blockTimeSec) / 60) : 0;
-    const stuck = metrics.oldestPendingMinutes >= stuckMinutes;
-    add('stuck_intents', 'Pending intents', stuck ? 'fail' : open.length ? 'warn' : 'ok', open.length ? `${open.length} pending, oldest ${metrics.oldestPendingMinutes} min${stuck ? ` (over the ${stuckMinutes} min limit)` : ''}` : 'None pending');
-    // Informational: a pending intent that is young is normal, so only an old one fails the check above.
-    if (!stuck && open.length) checks[checks.length - 1]!.level = 'ok';
+    m.pending = open.length;
+    const oldest = open.reduce((min, l) => Math.min(min, l.blockNumber), head.value);
+    m.oldestPendingMinutes = open.length ? Math.round(((head.value - oldest) * m.blockTimeSec) / 60) : 0;
+    const stuck = m.oldestPendingMinutes >= stuckMinutes;
+    add('stuck_intents', 'Pending intents', stuck ? 'fail' : 'ok', open.length ? `${open.length} pending, oldest ${m.oldestPendingMinutes} min${stuck ? ` (over the ${stuckMinutes} min limit)` : ''}` : 'None pending');
   } catch (err) {
     add('stuck_intents', 'Pending intents', 'warn', `Could not scan events: ${err instanceof Error ? err.message.slice(0, 100) : 'error'}`);
   }
-
-  return finish(checks, metrics);
+  return m;
 }
 
-function finish(checks: StatusCheck[], metrics: StatusMetrics): Status {
+export async function computeStatus(): Promise<Status> {
+  const checks: StatusCheck[] = [];
+  const gl = await timed(() => pingGenLayer());
+  checks.push({
+    id: 'genlayer_rpc',
+    label: 'GenLayer solver',
+    level: gl.value === null ? 'fail' : gl.ms > 8000 ? 'warn' : 'ok',
+    detail: gl.value === null ? `Unreachable: ${gl.error ?? 'no response'}` : `Solver reachable in ${gl.ms} ms`,
+  });
+  const metrics = await Promise.all(chains().map((c) => checkChain(c, checks)));
   return {
     ok: !checks.some((c) => c.level === 'fail'),
     generatedAt: new Date().toISOString(),
     mode: 'serverless',
-    chainId: CHAIN_ID,
-    vault: VAULT_ADDRESS(),
-    genlayer: { chain: genlayerChainName(), contract: genlayerContract() },
+    genlayer: { chain: genlayerChainName(), contract: genlayerContract(), latencyMs: gl.ms },
+    chains: chains().map((c) => ({ key: c.key, name: c.name, chainId: c.chainId, vault: c.vault })),
     checks,
     metrics,
   };
@@ -164,19 +149,21 @@ function finish(checks: StatusCheck[], metrics: StatusMetrics): Status {
 
 /** Prometheus text exposition for the same data. */
 export function toPrometheus(s: Status): string {
-  const m = s.metrics;
   const lines: string[] = [];
-  const g = (name: string, help: string, value: number, labels = '') => {
-    lines.push(`# HELP ${name} ${help}`, `# TYPE ${name} gauge`, `${name}${labels} ${value}`);
+  const g = (name: string, help: string, rows: Array<[string, number]>) => {
+    lines.push(`# HELP ${name} ${help}`, `# TYPE ${name} gauge`);
+    for (const [labels, value] of rows) lines.push(`${name}${labels} ${value}`);
   };
-  g('katalyst_up', '1 when every health check passes', s.ok ? 1 : 0);
-  g('katalyst_portaldot_head_block', 'Latest Portaldot block', m.headBlock);
-  g('katalyst_portaldot_latency_ms', 'Portaldot RPC latency', m.portaldotLatencyMs);
-  g('katalyst_genlayer_latency_ms', 'GenLayer solver read latency', m.genlayerLatencyMs);
-  g('katalyst_relayer_balance_tpot', 'Relayer gas balance in tPOT', m.relayerBalanceTpot);
-  g('katalyst_intents_total', 'Intents ever deposited in the vault', m.totalIntents);
-  g('katalyst_intents_pending', 'Intents deposited but not yet settled (recent window)', m.pending);
-  g('katalyst_oldest_pending_minutes', 'Age of the oldest pending intent', m.oldestPendingMinutes);
+  const per = (pick: (m: ChainMetrics) => number): Array<[string, number]> => s.metrics.map((m) => [`{chain="${m.key}"}`, pick(m)]);
+  g('katalyst_up', '1 when every health check passes', [['', s.ok ? 1 : 0]]);
+  g('katalyst_genlayer_latency_ms', 'GenLayer solver read latency', [['', s.genlayer.latencyMs]]);
+  g('katalyst_head_block', 'Latest block per settlement chain', per((m) => m.headBlock));
+  g('katalyst_rpc_latency_ms', 'RPC latency per settlement chain', per((m) => m.rpcLatencyMs));
+  g('katalyst_relayer_balance', 'Relayer gas balance in native units', per((m) => m.relayerBalance));
+  g('katalyst_intents_total', 'Intents ever deposited in the vault', per((m) => m.totalIntents));
+  g('katalyst_intents_pending', 'Intents deposited but not yet settled (recent window)', per((m) => m.pending));
+  g('katalyst_oldest_pending_minutes', 'Age of the oldest pending intent', per((m) => m.oldestPendingMinutes));
+  lines.push('# HELP katalyst_check 1 when the named check is ok', '# TYPE katalyst_check gauge');
   for (const c of s.checks) lines.push(`katalyst_check{id="${c.id}",level="${c.level}"} ${c.level === 'ok' ? 1 : 0}`);
   return lines.join('\n') + '\n';
 }

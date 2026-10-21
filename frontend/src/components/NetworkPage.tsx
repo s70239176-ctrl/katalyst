@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
+import { activeChain, tokenSymbol } from '../utils/chains';
 import { RELAYER_API, fetchHealth, fetchStatus, type StatusView } from '../utils/api';
 import { GENLAYER_CONTRACT, GENLAYER_EXPLORER } from '../utils/genlayer';
 import { fetchNetworkStats } from '../utils/history';
-import { VAULT_ADDRESS, explorerBlockUrl } from '../utils/substrate';
-import { POOL_LABELS, TOKEN_SYMBOL, formatPot, timeAgo, type NetworkStats, type RelayerHealth } from '../utils/types';
+import { vaultAddress, explorerBlockUrl } from '../utils/substrate';
+import { POOL_LABELS, formatPot, timeAgo, type NetworkStats, type RelayerHealth } from '../utils/types';
 import { Badge, CopyButton, ExternalLink, Skeleton, Stat } from './ui';
 import { ValidatorsCard } from './ValidatorsCard';
 
@@ -50,7 +51,7 @@ export function NetworkPage({ refreshKey }: { refreshKey: number }) {
           <>
             <Stat label="Intents submitted" value={stats.deposits} hint="all time, on-chain" />
             <Stat label="Unique wallets" value={stats.uniqueUsers} />
-            <Stat label="Volume deposited" value={`${formatPot(stats.volume, 2)}`} hint={`${TOKEN_SYMBOL}, all intents`} />
+            <Stat label="Volume deposited" value={`${formatPot(stats.volume, 2)}`} hint={`${tokenSymbol()}, all intents`} />
             <Stat
               label="Settled"
               value={settled}
@@ -73,7 +74,7 @@ export function NetworkPage({ refreshKey }: { refreshKey: number }) {
           {health ? (
             <dl className="mt-4 space-y-2 text-sm">
               <Line label="Account" value={<span className="mono">{health.relayer}</span>} />
-              <Line label="Gas balance" value={`${Number(health.relayerBalance).toFixed(2)} ${TOKEN_SYMBOL}`} />
+              <Line label="Gas balance" value={`${Number(health.relayerBalance).toFixed(2)} ${tokenSymbol()}`} />
               <Line label="Mode" value={health.mode === 'serverless' ? 'Serverless (Vercel Functions)' : 'Always-on relayer'} />
               {health.queueLength !== undefined && <Line label="Queue" value={`${health.queueLength} in flight`} />}
               {health.uptimeSec !== undefined && <Line label="Uptime" value={`${Math.floor(health.uptimeSec / 60)} min`} />}
@@ -103,7 +104,7 @@ export function NetworkPage({ refreshKey }: { refreshKey: number }) {
             Contracts
           </h2>
           <dl className="mt-4 space-y-3 text-sm">
-            <ContractLine label="Vault · Portaldot V3 (EVM)" address={VAULT_ADDRESS} />
+            <ContractLine label={`Vault · ${activeChain().name}`} address={vaultAddress()} />
             <ContractLine
               label="Solver · GenLayer Studionet"
               address={GENLAYER_CONTRACT}

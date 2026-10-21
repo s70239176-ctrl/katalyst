@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && vite build -c vite.widget.config.ts",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "cli": "tsx ../cli/katalyst.ts"
+    "cli": "tsx ../cli/katalyst.ts",
+    "build:widget": "vite build -c vite.widget.config.ts"
   },
   "dependencies": {
     "@polkadot/util": "^14.0.3",

@@ -1,3 +1,4 @@
+import { activeChain } from '../utils/chains';
 import { POOL_LABELS, poolLabel, type FlowStage, type VerdictLeg } from '../utils/types';
 
 interface RouteVisualizerProps {
@@ -55,7 +56,7 @@ export function RouteVisualizer({ stage, route }: RouteVisualizerProps) {
         {pools.map((p, i) => edge(562, H / 2, 722, poolY(i), settled && p.percentage > 0, `p-${p.target_pool}`))}
 
         {node(70, 'Wallet', 'Signs deposit', stage === 'depositing')}
-        {node(280, 'Vault', 'Escrow on Portaldot', deposited)}
+        {node(280, 'Vault', `Escrow on ${activeChain().name.split(' ')[0]}`, deposited)}
         {node(500, 'GenLayer', 'Validator consensus', consensus)}
 
         {pools.map((p, i) => {

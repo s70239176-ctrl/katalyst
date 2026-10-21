@@ -3,7 +3,7 @@
  * statistics. No indexer or database is involved; the relayer API only enriches this data.
  */
 import { Contract, getAddress, toBeHex, toUtf8String, zeroPadValue, type Log } from 'ethers';
-import { VAULT_ADDRESS, VAULT_DEPLOY_BLOCK, getReadProvider } from './substrate';
+import { vaultAddress, vaultDeployBlock, getReadProvider } from './substrate';
 import type { IntentOutcome, NetworkStats, RouteAllocation, UserIntent } from './types';
 
 const LOG_CHUNK_BLOCKS = 1000;
@@ -17,7 +17,7 @@ const ABI = [
 ] as const;
 
 function vault(): Contract {
-  return new Contract(getAddress(VAULT_ADDRESS), ABI, getReadProvider());
+  return new Contract(getAddress(vaultAddress()), ABI, getReadProvider());
 }
 
 const topic = (c: Contract, name: string): string => c.interface.getEvent(name)!.topicHash;
@@ -25,9 +25,9 @@ const topic = (c: Contract, name: string): string => c.interface.getEvent(name)!
 async function scan(topics: (string | string[] | null)[]): Promise<Log[]> {
   const p = getReadProvider();
   const head = await p.getBlockNumber();
-  const address = getAddress(VAULT_ADDRESS);
+  const address = getAddress(vaultAddress());
   const all: Log[] = [];
-  for (let from = VAULT_DEPLOY_BLOCK; from <= head; from += LOG_CHUNK_BLOCKS) {
+  for (let from = vaultDeployBlock(); from <= head; from += LOG_CHUNK_BLOCKS) {
     const to = Math.min(from + LOG_CHUNK_BLOCKS - 1, head);
     all.push(...(await p.getLogs({ address, topics, fromBlock: from, toBlock: to })));
   }

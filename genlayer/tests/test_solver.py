@@ -182,6 +182,31 @@ class ContractTests(unittest.TestCase):
             self.c.adjudicate_intent(n, "A-Tier only", 1)
         self.assertEqual(len(json.loads(self.c.get_history())), solver.MAX_HISTORY_ENTRIES)
 
+    def test_refs_isolate_vaults_with_the_same_nonce(self):
+        a = json.loads(self.c.adjudicate_ref("420420777:0xaaaa:1", "A-Tier only", 10))
+        llm(malicious=True)
+        b = json.loads(self.c.adjudicate_ref("11155111:0xbbbb:1", "A-Tier only", 10))
+        self.assertEqual(a["status"], "APPROVED")      # chain A, nonce 1
+        self.assertEqual(b["status"], "REJECTED")      # chain B, nonce 1 is a different intent
+        self.assertEqual(a["ref"], "420420777:0xaaaa:1")
+        self.assertEqual(json.loads(self.c.get_result_ref("420420777:0xaaaa:1"))["status"], "APPROVED")
+        self.assertEqual(self.c.get_result_ref("11155111:0xcccc:1"), "")
+
+    def test_ref_adjudication_is_idempotent(self):
+        first = self.c.adjudicate_ref("1:0xaa:5", "A-Tier only", 10)
+        llm(malicious=True)
+        self.assertEqual(self.c.adjudicate_ref("1:0xaa:5", "other", 10), first)
+
+    def test_legacy_nonce_api_and_ref_api_share_the_bare_nonce_ref(self):
+        legacy = self.c.adjudicate_intent(9, "A-Tier only", 10)
+        self.assertEqual(self.c.get_result_ref("9"), legacy)
+        self.assertNotIn("ref", json.loads(legacy))   # bare-nonce refs keep the original payload shape
+
+    def test_bad_refs_rejected(self):
+        for bad in ("", "no-nonce", "1:0xaa:", "1:0xaa:x", "a b:1", "x" * 101):
+            with self.assertRaises(Exception, msg=bad):
+                self.c.adjudicate_ref(bad, "A-Tier only", 10)
+
     def test_rejects_bad_inputs(self):
         with self.assertRaises(Exception):
             self.c.adjudicate_intent(-1, "x", 1)

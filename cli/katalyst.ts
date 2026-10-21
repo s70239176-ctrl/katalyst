@@ -43,6 +43,7 @@ function usage(): never {
   verify <nonce> [--rerun]    Verify a settled intent against both chains; exit code 1 if a check fails
   intent <nonce>              Show the deposit and settlement recorded on Portaldot
   validators                  GenLayer validator participation
+  simulate <contract> <method> '<json-args>'   Simulate any GenLayer contract method (free)
 
 Options: --json  --out <file>  --vault  --rpc  --deploy-block  --genlayer  --genlayer-chain`);
   process.exit(command ? 2 : 0);
@@ -99,6 +100,18 @@ async function main(): Promise<void> {
     case 'intent': {
       const { deposit, settlement } = await k.getIntent(nonceArg());
       return console.log(JSON.stringify({ deposit, settlement }, replacer, 2));
+    }
+    case 'simulate': {
+      const [, address, method, rawArgs] = positionals;
+      if (!address || !method) usage();
+      const reader = k.genlayer;
+      if (!reader) throw new Error('GenLayer is not configured: pass --genlayer or set KATALYST_GENLAYER_CONTRACT');
+      const out = await reader.simulate(method, rawArgs ? (JSON.parse(rawArgs) as unknown[]) : [], address);
+      try {
+        return console.log(JSON.stringify(JSON.parse(String(out)), null, 2));
+      } catch {
+        return console.log(String(out));
+      }
     }
     case 'validators': {
       const res = await k.validators();

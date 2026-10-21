@@ -65,6 +65,18 @@ idempotent step and is safe to repeat or run concurrently:
 - **Rate limits.** Studionet allows roughly 30 requests/min per client; many simultaneous users polling through one
   deployment can hit it. Mode B (single poller) avoids that.
 
+## Several settlement chains
+
+Set `VAULTS` (server, secret-free JSON) and `VITE_CHAINS` (public) to the same list of chains; see
+[docs/INTEGRATION.md](docs/INTEGRATION.md#multiple-settlement-chains). The relayer key must be funded on every chain, and each vault must have
+been deployed with that key's address as `relayer`. `/api/status` then reports each chain separately.
+
+If you redeploy the GenLayer solver, keep the old addresses in `VITE_GENLAYER_FALLBACKS` so earlier intents still verify.
+
+## Widget
+
+`npm run build` also emits `dist/widget/katalyst-widget.js` (the `<katalyst-preview>` web component) and `dist/widget-demo.html`.
+
 ## Mode B — always-on relayer
 
 Vercel cannot run a long-lived process, so host `relayer/` elsewhere (Railway, Render, Fly.io, a VPS) with the

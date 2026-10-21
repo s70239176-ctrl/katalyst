@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { formatPot, shortAddress, TOKEN_SYMBOL, type NetworkStatus, type WalletState } from '../utils/types';
+import { formatPot, shortAddress, type NetworkStatus, type WalletState } from '../utils/types';
+import { CHAINS, activeChain, setActiveChain, tokenSymbol } from '../utils/chains';
 import { CopyButton } from './ui';
 
 export type Page = 'intent' | 'activity' | 'network' | 'verify' | 'security' | 'receipt';
@@ -24,14 +25,15 @@ interface HeaderProps {
 
 const NETWORK_LABEL: Record<NetworkStatus, { dot: string; label: string }> = {
   connecting: { dot: 'bg-warn', label: 'Connecting' },
-  online: { dot: 'bg-accent', label: 'Portaldot V3 Testnet' },
+  online: { dot: 'bg-accent', label: '' },
   offline: { dot: 'bg-danger', label: 'Network unreachable' },
 };
 
 export function Header({ page, onNavigate, wallet, balance, network, connecting, onConnect }: HeaderProps) {
   const [menu, setMenu] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const net = NETWORK_LABEL[network];
+  const chain = activeChain();
+  const net = { ...NETWORK_LABEL[network], label: NETWORK_LABEL[network].label || chain.name };
 
   useEffect(() => {
     if (!menu) return;
@@ -68,26 +70,48 @@ export function Header({ page, onNavigate, wallet, balance, network, connecting,
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="badge hidden sm:inline-flex" aria-live="polite">
-            <span className={`h-1.5 w-1.5 rounded-full ${net.dot}`} />
-            {net.label}
-          </span>
+          {CHAINS.length > 1 ? (
+            <label className="badge hidden items-center gap-2 sm:inline-flex">
+              <span className={`h-1.5 w-1.5 rounded-full ${net.dot}`} aria-hidden="true" />
+              <span className="sr-only">Settlement chain</span>
+              <select
+                value={chain.key}
+                aria-label="Settlement chain"
+                className="cursor-pointer bg-transparent text-xs outline-none"
+                onChange={(e) => {
+                  setActiveChain(e.target.value);
+                  window.location.reload(); // rebuild every cached provider and SDK instance for the new chain
+                }}
+              >
+                {CHAINS.map((c) => (
+                  <option key={c.key} value={c.key}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <span className="badge hidden sm:inline-flex" aria-live="polite">
+              <span className={`h-1.5 w-1.5 rounded-full ${net.dot}`} />
+              {net.label}
+            </span>
+          )}
 
           {wallet ? (
             <div className="relative" ref={ref}>
               <button type="button" className="btn btn-sm" onClick={() => setMenu((v) => !v)} aria-haspopup="menu" aria-expanded={menu}>
                 <span className="tabular-nums">{balance === null ? '…' : formatPot(balance)}</span>
-                <span className="text-subtle">{TOKEN_SYMBOL}</span>
+                <span className="text-subtle">{tokenSymbol()}</span>
                 <span className="mono text-muted">{shortAddress(wallet.address)}</span>
               </button>
               {menu && (
                 <div role="menu" className="card absolute right-0 mt-2 w-[22rem] max-w-[90vw] p-4">
                   <div className="card-title mb-2">Account</div>
                   <AddressRow label="EVM address" value={wallet.address} />
-                  <AddressRow label="Native account (holds your POT)" value={wallet.native} />
-                  <p className="mt-3 text-xs text-subtle">
-                    Portaldot maps each EVM address to a native account. Fund the native address with POT.
-                  </p>
+                  {chain.portaldotNative && <AddressRow label="Native account (holds your POT)" value={wallet.native} />}
+                  {chain.portaldotNative && (
+                    <p className="mt-3 text-xs text-subtle">Portaldot maps each EVM address to a native account. Fund the native address with POT.</p>
+                  )}
                 </div>
               )}
             </div>

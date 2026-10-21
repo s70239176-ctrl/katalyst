@@ -74,7 +74,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Strictly validate the JSON emitted by the Python solver. */
-export function parseSolverPayload(raw: string, expectedNonce: number): SolverPayload {
+export function parseSolverPayload(raw: string, expectedNonce: number, expectedRef?: string): SolverPayload {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -84,6 +84,9 @@ export function parseSolverPayload(raw: string, expectedNonce: number): SolverPa
   if (!isRecord(parsed)) throw new Error('GenLayer payload is not an object');
   if (parsed['nonce'] !== expectedNonce) {
     throw new Error(`GenLayer payload nonce ${String(parsed['nonce'])} != expected ${expectedNonce}`);
+  }
+  if (expectedRef !== undefined && parsed['ref'] !== expectedRef) {
+    throw new Error(`GenLayer payload is for a different intent (ref ${String(parsed['ref'])} != ${expectedRef})`);
   }
   const status = parsed['status'];
   if (status !== 'APPROVED' && status !== 'REJECTED') throw new Error(`Unknown payload status: ${String(status)}`);
@@ -141,6 +144,7 @@ function countVotes(votes: Record<string, string> | undefined): { agreed: number
  * consensus (ACCEPTED), then read back and validate the agreed route.
  */
 export async function triggerGenLayerAdjudication(
+  ref: string,
   nonce: number,
   prompt: string,
   amount: string,
@@ -149,8 +153,8 @@ export async function triggerGenLayerAdjudication(
 
   const txHash = await client.writeContract({
     address: contract,
-    functionName: 'adjudicate_intent',
-    args: [BigInt(nonce), prompt, BigInt(amount)],
+    functionName: 'adjudicate_ref',
+    args: [ref, prompt, BigInt(amount)],
     value: 0n,
   });
   console.log(`[GENLAYER] Intent #${nonce} submitted: ${String(txHash)}`);
@@ -173,15 +177,15 @@ export async function triggerGenLayerAdjudication(
   // View calls read the latest *non-final* state so we do not wait out the appeal window.
   const raw = await client.readContract({
     address: contract,
-    functionName: 'get_result',
-    args: [BigInt(nonce)],
+    functionName: 'get_result_ref',
+    args: [ref],
     transactionHashVariant: TransactionHashVariant.LATEST_NONFINAL,
   });
   if (typeof raw !== 'string' || raw.length === 0) {
     throw new Error(`GenLayer has no stored result for intent #${nonce}`);
   }
 
-  const payload = parseSolverPayload(raw, nonce);
+  const payload = parseSolverPayload(raw, nonce, ref);
   console.log(
     `[GENLAYER] Intent #${nonce} ${payload.status} (${agreed}/${total} validators agreed)` +
       (payload.reason ? ` — ${payload.reason}` : ''),

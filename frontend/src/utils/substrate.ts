@@ -19,8 +19,8 @@ import {
 } from 'ethers';
 import { encodeAddress } from '@polkadot/util-crypto';
 import { hexToU8a, u8aConcat } from '@polkadot/util';
+import { activeChain, blockUrl, chainId, rpcUrl, vaultAddress, vaultDeployBlock } from './chains';
 import {
-  CHAIN_ID,
   SS58_PREFIX,
   parsePot,
   type IntentOutcome,
@@ -28,8 +28,7 @@ import {
   type WalletState,
 } from './types';
 
-export const PORTALDOT_EVM_RPC: string = import.meta.env.VITE_PORTALDOT_EVM_RPC ?? 'https://test-evm-rpc-v3.portaldot.dev';
-export const VAULT_ADDRESS: string = import.meta.env.VITE_VAULT_ADDRESS ?? '';
+export { rpcUrl, vaultAddress, vaultDeployBlock };
 
 const LOG_CHUNK_BLOCKS = 1000;
 
@@ -44,12 +43,17 @@ const VAULT_ABI = [
   'event IntentCancelled(uint64 indexed nonce, address indexed user, uint256 refunded)',
 ] as const;
 
-let readProvider: JsonRpcProvider | undefined;
+const readProviders = new Map<string, JsonRpcProvider>();
 
-/** Shared read-only provider. eth-rpc on Portaldot does not support JSON-RPC batching. */
+/** Read-only provider for the active chain. eth-rpc on Portaldot does not support JSON-RPC batching. */
 export function getReadProvider(): JsonRpcProvider {
-  readProvider ??= new JsonRpcProvider(PORTALDOT_EVM_RPC, CHAIN_ID, { staticNetwork: true, batchMaxCount: 1 });
-  return readProvider;
+  const c = activeChain();
+  let p = readProviders.get(c.key);
+  if (!p) {
+    p = new JsonRpcProvider(c.rpcUrl, c.chainId, { staticNetwork: true, batchMaxCount: 1 });
+    readProviders.set(c.key, p);
+  }
+  return p;
 }
 
 /** Resolves true once the node answers. */
@@ -72,8 +76,9 @@ export function nativeAccountOf(evmAddress: string): string {
   return encodeAddress(u8aConcat(hexToU8a(evmAddress), new Uint8Array(12).fill(0xee)), SS58_PREFIX);
 }
 
-async function ensurePortaldotChain(wallet: Eip1193Provider): Promise<void> {
-  const chainIdHex = toBeHex(CHAIN_ID);
+async function ensureChain(wallet: Eip1193Provider): Promise<void> {
+  const c = activeChain();
+  const chainIdHex = toBeHex(c.chainId);
   try {
     await wallet.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: chainIdHex }] });
   } catch (err) {
@@ -84,19 +89,17 @@ async function ensurePortaldotChain(wallet: Eip1193Provider): Promise<void> {
       params: [
         {
           chainId: chainIdHex,
-          chainName: 'PortaldotV3 Testnet',
-          nativeCurrency: { name: 'tPOTv3', symbol: 'tPOTv3', decimals: 18 },
-          rpcUrls: [PORTALDOT_EVM_RPC],
+          chainName: c.name,
+          nativeCurrency: { name: c.symbol, symbol: c.symbol, decimals: 18 },
+          rpcUrls: [c.rpcUrl],
         },
       ],
     });
   }
 }
 
-export const VAULT_DEPLOY_BLOCK: number = Number(import.meta.env.VITE_VAULT_DEPLOY_BLOCK ?? 0);
-export const EXPLORER_BASE = 'https://node-console.portaldot.dev';
-
-export const explorerBlockUrl = (blockNumber: number): string => `${EXPLORER_BASE}/#/explorer/query/${blockNumber}`;
+/** Explorer link for a block on the active chain ('' when the chain has no explorer). */
+export const explorerBlockUrl = (blockNumber: number): string => blockUrl(blockNumber);
 
 /** Chain id the injected wallet is currently on, or null when there is no wallet. */
 export async function getWalletChainId(): Promise<number | null> {
@@ -122,9 +125,9 @@ export async function getConnectedWallet(): Promise<WalletState | null> {
   }
 }
 
-/** Ask the wallet to switch to (or add) PortaldotV3. */
-export async function switchToPortaldot(): Promise<void> {
-  await ensurePortaldotChain(injected());
+/** Ask the wallet to switch to (or add) the active chain. */
+export async function switchToChain(): Promise<void> {
+  await ensureChain(injected());
 }
 
 /** Subscribe to account / network changes in the injected wallet. Returns an unsubscribe. */
@@ -145,7 +148,7 @@ export async function connectWallet(): Promise<WalletState> {
   const accounts = (await wallet.request({ method: 'eth_requestAccounts' })) as string[];
   const first = accounts[0];
   if (!first) throw new Error('The wallet exposes no accounts');
-  await ensurePortaldotChain(wallet);
+  await ensureChain(wallet);
   const address = getAddress(first);
   return { address, native: nativeAccountOf(address) };
 }

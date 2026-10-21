@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Katalyst preview widget — demo</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; background: #0a0d12; color: #e8edf4; }
+      a { color: #6aa9ff; }
+      pre { background: #10151c; border: 1px solid #2c374a; border-radius: 10px; padding: 12px; overflow-x: auto; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <h1>&lt;katalyst-preview&gt;</h1>
+    <p>Drop a free, GenLayer-backed verdict preview into any page. Set <code>contract</code> to your solver address (or pass <code>?contract=0x…</code> to this page).</p>
+
+    <katalyst-preview id="w" prompt="Maximize yield but only A-Tier Carbon pools, minimum 12% APY."></katalyst-preview>
+
+    <h3>Embed</h3>
+    <pre>&lt;script type="module" src="/widget/katalyst-widget.js"&gt;&lt;/script&gt;
+&lt;katalyst-preview contract="0x…solver…" prompt="Max yield, A-Tier only"&gt;&lt;/katalyst-preview&gt;</pre>
+
+    <p id="event" style="color:#9ba6b6;font-size:13px"></p>
+
+    <script type="module" src="./widget/katalyst-widget.js"></script>
+    <script type="module">
+      const w = document.getElementById('w');
+      w.setAttribute('contract', new URLSearchParams(location.search).get('contract') ?? '');
+      w.addEventListener('katalyst:verdict', (e) => {
+        document.getElementById('event').textContent = 'katalyst:verdict event → ' + e.detail.status + ' (' + e.detail.allocations.map((a) => a.percentage + '%').join(' / ') + ')';
+      });
+    </script>
+  </body>
+</html>

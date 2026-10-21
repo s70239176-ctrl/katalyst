@@ -45,6 +45,11 @@ export interface VerifyOptions {
   hintBlock?: number;
   /** Also re-run the adjudication now and compare (informational: live data can legitimately change). */
   rerun?: boolean;
+  /**
+   * This vault's earliest intents were adjudicated by nonce-only solver deployments: also match those
+   * (the primary Portaldot vault sets this; vaults added later use refs only).
+   */
+  legacyNonceRefs?: boolean;
 }
 
 const eqAddr = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
@@ -146,7 +151,7 @@ export async function verifyIntent(
   let rawResult: string | null = null;
   if (gl && settlement.kind !== 'cancelled') {
     // Independent reads: run them together.
-    const [resultRes, adjRes] = await Promise.allSettled([gl.result(nonce), gl.findAdjudication(nonce)]);
+    const [resultRes, adjRes] = await Promise.allSettled([gl.result(vault.ref(nonce), opts.legacyNonceRefs ? nonce : undefined), gl.findAdjudication(vault.ref(nonce), opts.legacyNonceRefs ? nonce : undefined)]);
     if (resultRes.status === 'fulfilled' && resultRes.value) {
       rawResult = resultRes.value;
       try {

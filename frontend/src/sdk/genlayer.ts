@@ -13,11 +13,20 @@ export interface GenLayerConfig {
   chain?: string;
   /** Optional; simulations and reads work with a throwaway key. */
   privateKey?: `0x${string}`;
+  /**
+   * Earlier solver deployments, consulted for intents adjudicated before the current one was deployed
+   * (they answer the legacy nonce-only API). Only meaningful for a chain whose old intents used plain nonces.
+   */
+  fallbackContracts?: string[];
 }
 
 /** One `adjudicate_intent` transaction found on the solver, decoded back to its intent. */
 export interface Adjudication {
   hash: string;
+  /** The solver's key for the intent: "chainId:vault:nonce", or the bare nonce for the legacy API. */
+  ref: string;
+  /** Solver contract the transaction was sent to. */
+  contract: string;
   nonce: number;
   amountWei: string;
   prompt: string;
@@ -55,6 +64,11 @@ export class GenLayerReader {
 
   constructor(private readonly cfg: GenLayerConfig) {}
 
+  /** The current solver first, then any earlier deployments. */
+  private get contracts(): string[] {
+    return [this.cfg.contract, ...(this.cfg.fallbackContracts ?? [])];
+  }
+
   get contract(): `0x${string}` {
     return this.cfg.contract as `0x${string}`;
   }
@@ -83,15 +97,43 @@ export class GenLayerReader {
     return parseVerdict(raw);
   }
 
-  /** Stored verdict JSON for an intent nonce, or null if the solver has none. */
-  async result(nonce: number): Promise<string | null> {
-    const raw = await this.client().readContract({
-      address: this.contract,
-      functionName: 'get_result',
-      args: [BigInt(nonce)],
-      transactionHashVariant: TransactionHashVariant.LATEST_NONFINAL,
+  /**
+   * Simulate any write method on any GenLayer contract (free; nothing is stored). Lets other dApps reuse the
+   * same pattern with their own intelligent contracts. Returns the method's return value.
+   */
+  async simulate(method: string, args: unknown[], contract?: string): Promise<unknown> {
+    return this.client().simulateWriteContract({
+      address: (contract ?? this.cfg.contract) as `0x${string}`,
+      functionName: method,
+      args: args as never[],
     });
-    return typeof raw === 'string' && raw.length > 0 ? raw : null;
+  }
+
+  /**
+   * Stored verdict JSON for an intent, or null if no solver has one. `ref` is "chainId:vault:nonce".
+   * With `legacyNonce`, earlier nonce-only deployments are consulted too.
+   */
+  async result(ref: string, legacyNonce?: number): Promise<string | null> {
+    const read = async (address: string, fn: string, arg: string | bigint): Promise<string | null> => {
+      try {
+        const raw = await this.client().readContract({
+          address: address as `0x${string}`,
+          functionName: fn,
+          args: [arg],
+          transactionHashVariant: TransactionHashVariant.LATEST_NONFINAL,
+        });
+        return typeof raw === 'string' && raw.length > 0 ? raw : null;
+      } catch {
+        return null; // an older deployment may not expose this method
+      }
+    };
+    const direct = await read(this.cfg.contract, 'get_result_ref', ref);
+    if (direct || legacyNonce === undefined) return direct;
+    for (const address of this.contracts) {
+      const hit = (await read(address, 'get_result_ref', String(legacyNonce))) ?? (await read(address, 'get_result', BigInt(legacyNonce)));
+      if (hit) return hit;
+    }
+    return null;
   }
 
   /** Where a GenLayer transaction stands, with its validator votes. */
@@ -104,53 +146,64 @@ export class GenLayerReader {
   }
 
   /**
-   * Every `adjudicate_intent` transaction on the solver, decoded to (nonce, prompt, amount) with its votes.
+   * Every adjudication transaction on the solver(s), decoded to (ref, nonce, prompt, amount) with its votes.
    * Uses Studio's `sim_getTransactionsForAddress`; returns null where the network does not offer it.
    */
   async adjudications(): Promise<Adjudication[] | null> {
     const request = this.client().request as unknown as (a: { method: string; params: unknown[] }) => Promise<unknown>;
-    let rows: unknown;
-    try {
-      rows = await request({ method: 'sim_getTransactionsForAddress', params: [this.cfg.contract] });
-    } catch {
-      return null;
-    }
-    if (!Array.isArray(rows)) return null;
-
     const out: Adjudication[] = [];
-    for (const row of rows as Array<Record<string, unknown>>) {
-      const data = row['data'] as { calldata?: string } | undefined;
-      if (!data?.calldata) continue;
+    let any = false;
+    for (const contract of this.contracts) {
+      let rows: unknown;
       try {
-        const decoded = abi.calldata.decode(Uint8Array.from(atob(data.calldata), (c) => c.charCodeAt(0))) as unknown;
-        const call = decoded instanceof Map ? Object.fromEntries(decoded as Map<string, unknown>) : (decoded as Record<string, unknown>);
-        if (call['method'] !== 'adjudicate_intent') continue;
-        const args = call['args'] as unknown[];
-        const votes = (row['consensus_data'] as { votes?: Record<string, string> } | undefined)?.votes ?? {};
-        const values = Object.values(votes);
-        out.push({
-          hash: String(row['hash']),
-          nonce: Number(args[0]),
-          amountWei: String(args[2]),
-          prompt: String(args[1]),
-          status: normalizeStatus(row['status']),
-          createdAt: typeof row['created_at'] === 'string' ? row['created_at'] : null,
-          votes,
-          agreed: values.filter((v) => v.toLowerCase() === 'agree').length,
-          total: values.length,
-        });
+        rows = await request({ method: 'sim_getTransactionsForAddress', params: [contract] });
       } catch {
-        /* not an adjudication call */
+        continue;
+      }
+      if (!Array.isArray(rows)) continue;
+      any = true;
+      for (const row of rows as Array<Record<string, unknown>>) {
+        const data = row['data'] as { calldata?: string } | undefined;
+        if (!data?.calldata) continue;
+        try {
+          const decoded = abi.calldata.decode(Uint8Array.from(atob(data.calldata), (c) => c.charCodeAt(0))) as unknown;
+          const call = decoded instanceof Map ? Object.fromEntries(decoded as Map<string, unknown>) : (decoded as Record<string, unknown>);
+          const method = call['method'];
+          if (method !== 'adjudicate_intent' && method !== 'adjudicate_ref') continue;
+          const args = call['args'] as unknown[];
+          const ref = String(args[0]);
+          const nonce = Number(ref.includes(':') ? ref.slice(ref.lastIndexOf(':') + 1) : ref);
+          const votes = (row['consensus_data'] as { votes?: Record<string, string> } | undefined)?.votes ?? {};
+          const values = Object.values(votes);
+          out.push({
+            hash: String(row['hash']),
+            ref,
+            contract,
+            nonce,
+            amountWei: String(args[2]),
+            prompt: String(args[1]),
+            status: normalizeStatus(row['status']),
+            createdAt: typeof row['created_at'] === 'string' ? row['created_at'] : null,
+            votes,
+            agreed: values.filter((v) => v.toLowerCase() === 'agree').length,
+            total: values.length,
+          });
+        } catch {
+          /* not an adjudication call */
+        }
       }
     }
-    return out.sort((a, b) => b.nonce - a.nonce);
+    return any ? out.sort((a, b) => b.nonce - a.nonce) : null;
   }
 
-  /** The adjudication transaction for `nonce`, preferring one that reached consensus. */
-  async findAdjudication(nonce: number): Promise<Adjudication | null> {
+  /**
+   * The adjudication transaction for an intent, preferring one that reached consensus. `legacyNonce` also
+   * matches earlier nonce-only submissions (a bare numeric ref).
+   */
+  async findAdjudication(ref: string, legacyNonce?: number): Promise<Adjudication | null> {
     const all = await this.adjudications();
     if (!all) return null;
-    const matches = all.filter((a) => a.nonce === nonce);
+    const matches = all.filter((a) => a.ref === ref || (legacyNonce !== undefined && a.ref === String(legacyNonce)));
     return matches.find((a) => isSuccessStatus(a.status)) ?? matches[0] ?? null;
   }
 }

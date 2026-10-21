@@ -2,6 +2,9 @@
  * Server-side configuration for the serverless relayer (Vercel Functions).
  * Secrets (RELAYER_PRIVATE_KEY, GENLAYER_PRIVATE_KEY) are read from server-only environment
  * variables and never reach the browser bundle.
+ *
+ * Multi-chain: `VAULTS` is a JSON array of settlement chains; when it is absent a single Portaldot vault
+ * is built from the legacy variables (VAULT_CONTRACT_ADDRESS, PORTALDOT_EVM_RPC, ...).
  */
 import { FetchRequest, JsonRpcProvider, Wallet } from 'ethers';
 
@@ -31,26 +34,105 @@ export function optionalEnv(...names: string[]): string | undefined {
   return undefined;
 }
 
-export const CHAIN_ID = Number(process.env['PORTALDOT_CHAIN_ID'] ?? 420420777);
-export const VAULT_ADDRESS = (): string => env('VAULT_CONTRACT_ADDRESS', 'VITE_VAULT_ADDRESS');
-export const VAULT_DEPLOY_BLOCK = (): number => Number(optionalEnv('VAULT_DEPLOY_BLOCK', 'VITE_VAULT_DEPLOY_BLOCK') ?? 0);
-export const EXPLORER = 'https://node-console.portaldot.dev';
 export const GENLAYER_EXPLORER = optionalEnv('GENLAYER_EXPLORER_URL') ?? 'https://explorer-studio.genlayer.com';
+const PORTALDOT_EXPLORER = 'https://node-console.portaldot.dev/#/explorer/query/{block}';
 
-export const explorerBlockUrl = (n: number): string => `${EXPLORER}/#/explorer/query/${n}`;
+// ---- Chains --------------------------------------------------------------------------
 
-let provider: JsonRpcProvider | undefined;
-let wallet: Wallet | undefined;
+/** One settlement chain: a vault, how to reach it and which key relays for it. */
+export interface ChainCfg {
+  key: string;
+  name: string;
+  chainId: number;
+  rpcUrl: string;
+  vault: string;
+  deployBlock: number;
+  /** Template with a `{block}` placeholder. */
+  explorerBlockUrl: string;
+  /** Env var holding this chain's relayer key (default RELAYER_PRIVATE_KEY). */
+  relayerKeyEnv: string;
+}
 
-/** eth-rpc on Portaldot does not support JSON-RPC batching. */
-export function getProvider(): JsonRpcProvider {
-  if (!provider) {
-    // Fail fast: a hung RPC call must error long before the function's own time limit.
-    const req = new FetchRequest(optionalEnv('PORTALDOT_EVM_RPC', 'VITE_PORTALDOT_EVM_RPC') ?? 'https://test-evm-rpc-v3.portaldot.dev');
-    req.timeout = 12_000;
-    provider = new JsonRpcProvider(req, CHAIN_ID, { staticNetwork: true, batchMaxCount: 1 });
+let chainList: ChainCfg[] | undefined;
+
+export function chains(): ChainCfg[] {
+  if (chainList) return chainList;
+  const raw = optionalEnv('VAULTS');
+  if (raw) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new HttpError(500, 'VAULTS is not valid JSON');
+    }
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new HttpError(500, 'VAULTS must be a non-empty array');
+    chainList = parsed.map((c: Record<string, unknown>, i): ChainCfg => {
+      const key = String(c['key'] ?? '');
+      if (!/^[a-z0-9_-]{1,24}$/.test(key)) throw new HttpError(500, `VAULTS[${i}].key must be lowercase alphanumeric`);
+      return {
+        key,
+        name: String(c['name'] ?? key),
+        chainId: Number(c['chainId']),
+        rpcUrl: String(c['rpcUrl']),
+        vault: String(c['vault']),
+        deployBlock: Number(c['deployBlock'] ?? 0),
+        explorerBlockUrl: String(c['explorerBlockUrl'] ?? ''),
+        relayerKeyEnv: String(c['relayerKeyEnv'] ?? 'RELAYER_PRIVATE_KEY'),
+      };
+    });
+  } else {
+    chainList = [
+      {
+        key: 'portaldot',
+        name: 'Portaldot V3 Testnet',
+        chainId: Number(process.env['PORTALDOT_CHAIN_ID'] ?? 420420777),
+        rpcUrl: optionalEnv('PORTALDOT_EVM_RPC', 'VITE_PORTALDOT_EVM_RPC') ?? 'https://test-evm-rpc-v3.portaldot.dev',
+        vault: env('VAULT_CONTRACT_ADDRESS', 'VITE_VAULT_ADDRESS'),
+        deployBlock: Number(optionalEnv('VAULT_DEPLOY_BLOCK', 'VITE_VAULT_DEPLOY_BLOCK') ?? 0),
+        explorerBlockUrl: PORTALDOT_EXPLORER,
+        relayerKeyEnv: 'RELAYER_PRIVATE_KEY',
+      },
+    ];
   }
-  return provider;
+  return chainList;
+}
+
+export function chainByKey(key?: string | null): ChainCfg {
+  const all = chains();
+  if (!key) return all[0]!;
+  const found = all.find((c) => c.key === key);
+  if (!found) throw new HttpError(400, `Unknown chain "${key}"`);
+  return found;
+}
+
+/** The solver's reference for an intent: unique across chains and vaults. */
+export const intentRef = (chain: ChainCfg, nonce: number): string => `${chain.chainId}:${chain.vault.toLowerCase()}:${nonce}`;
+
+export const explorerBlockUrl = (chain: ChainCfg, block: number): string =>
+  chain.explorerBlockUrl ? chain.explorerBlockUrl.replace('{block}', String(block)) : '';
+
+const providers = new Map<string, JsonRpcProvider>();
+const wallets = new Map<string, Wallet>();
+
+/** eth-rpc on Portaldot does not support JSON-RPC batching; fail fast so a hung call cannot eat the budget. */
+export function getProvider(chain: ChainCfg): JsonRpcProvider {
+  let p = providers.get(chain.key);
+  if (!p) {
+    const req = new FetchRequest(chain.rpcUrl);
+    req.timeout = 12_000;
+    p = new JsonRpcProvider(req, chain.chainId, { staticNetwork: true, batchMaxCount: 1 });
+    providers.set(chain.key, p);
+  }
+  return p;
+}
+
+export function getRelayerWallet(chain: ChainCfg): Wallet {
+  let w = wallets.get(chain.key);
+  if (!w) {
+    w = new Wallet(env(chain.relayerKeyEnv), getProvider(chain));
+    wallets.set(chain.key, w);
+  }
+  return w;
 }
 
 /** Retry a transient RPC failure (timeouts, dropped sockets) a couple of times. */
@@ -65,11 +147,6 @@ export async function retry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
     }
   }
   throw last;
-}
-
-export function getRelayerWallet(): Wallet {
-  wallet ??= new Wallet(env('RELAYER_PRIVATE_KEY'), getProvider());
-  return wallet;
 }
 
 export function json(body: unknown, status = 200): Response {

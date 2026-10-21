@@ -31,13 +31,16 @@ export async function pingGenLayer(): Promise<string> {
   return String(raw);
 }
 
-/** Submit `adjudicate_intent` and return the GenLayer transaction hash without waiting for consensus. */
-export async function submitAdjudication(nonce: number, prompt: string, amountWei: bigint): Promise<string> {
+/**
+ * Submit `adjudicate_ref` and return the GenLayer transaction hash without waiting for consensus.
+ * `ref` ("chainId:vault:nonce") keeps intents from different vaults and chains apart.
+ */
+export async function submitAdjudication(ref: string, prompt: string, amountWei: bigint): Promise<string> {
   const { client, contract } = getClient();
   const hash = await client.writeContract({
     address: contract,
-    functionName: 'adjudicate_intent',
-    args: [BigInt(nonce), prompt, amountWei],
+    functionName: 'adjudicate_ref',
+    args: [ref, prompt, amountWei],
     value: 0n,
   });
   return String(hash);
@@ -66,13 +69,13 @@ export async function txState(hash: string): Promise<TxState> {
   return { kind, status, votes: votesRaw };
 }
 
-/** The stored verdict for `nonce` (read from the latest non-final state), or null if none yet. */
-export async function readResult(nonce: number): Promise<string | null> {
+/** The stored verdict for `ref` (read from the latest non-final state), or null if none yet. */
+export async function readResult(ref: string): Promise<string | null> {
   const { client, contract } = getClient();
   const raw = await client.readContract({
     address: contract,
-    functionName: 'get_result',
-    args: [BigInt(nonce)],
+    functionName: 'get_result_ref',
+    args: [ref],
     transactionHashVariant: TransactionHashVariant.LATEST_NONFINAL,
   });
   return typeof raw === 'string' && raw.length > 0 ? raw : null;
@@ -89,7 +92,7 @@ const EVM_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /** Strictly validate the solver JSON before any funds move on its say-so. */
-export function parseVerdict(raw: string, expectedNonce: number): Verdict {
+export function parseVerdict(raw: string, expectedNonce: number, expectedRef?: string): Verdict {
   let v: unknown;
   try {
     v = JSON.parse(raw);
@@ -97,6 +100,7 @@ export function parseVerdict(raw: string, expectedNonce: number): Verdict {
     throw new HttpError(502, 'GenLayer returned non-JSON');
   }
   if (!isRecord(v) || v['nonce'] !== expectedNonce) throw new HttpError(502, 'GenLayer verdict nonce mismatch');
+  if (expectedRef !== undefined && v['ref'] !== expectedRef) throw new HttpError(502, 'GenLayer verdict is for a different intent (ref mismatch)');
   const status = v['status'];
   if (status !== 'APPROVED' && status !== 'REJECTED') throw new HttpError(502, 'GenLayer verdict has unknown status');
   if (!Array.isArray(v['allocations'])) throw new HttpError(502, 'GenLayer verdict missing allocations');

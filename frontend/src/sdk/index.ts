@@ -16,6 +16,8 @@ export * from './verify';
 
 export interface KatalystConfig extends VaultConfig {
   genlayer?: GenLayerConfig;
+  /** See VerifyOptions.legacyNonceRefs. */
+  legacyNonceRefs?: boolean;
 }
 
 export interface Katalyst {
@@ -46,7 +48,7 @@ export function createKatalyst(config: KatalystConfig): Katalyst {
       const deposit = await vault.deposit(nonce, hintBlock);
       return { deposit, settlement: deposit ? await vault.settlement(nonce, deposit.blockNumber) : null };
     },
-    verify: (nonce, opts) => verifyIntent(vault, genlayer, config.genlayer?.chain ?? (genlayer ? 'studionet' : null), nonce, opts),
+    verify: (nonce, opts) => verifyIntent(vault, genlayer, config.genlayer?.chain ?? (genlayer ? 'studionet' : null), nonce, { legacyNonceRefs: config.legacyNonceRefs ?? false, ...opts }),
     async validators() {
       if (!genlayer) return null;
       const rows = await genlayer.adjudications();

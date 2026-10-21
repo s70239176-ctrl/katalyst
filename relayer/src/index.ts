@@ -73,7 +73,8 @@ async function main(): Promise<void> {
       const base = { user: intent.user, amount: intent.amount, prompt: intent.prompt };
       store.upsert(intent.nonce, { ...base, phase: 'adjudicating' });
 
-      const verdict = await triggerGenLayerAdjudication(intent.nonce, intent.prompt, intent.amount);
+      const ref = `${PORTALDOT_CHAIN_ID}:${vault.toLowerCase()}:${intent.nonce}`;
+      const verdict = await triggerGenLayerAdjudication(ref, intent.nonce, intent.prompt, intent.amount);
       store.upsert(intent.nonce, {
         ...base,
         phase: 'settling',

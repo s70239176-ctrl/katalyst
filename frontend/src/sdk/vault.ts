@@ -104,6 +104,15 @@ export class VaultReader {
     return getAddress(this.cfg.vault);
   }
 
+  get chainId(): number {
+    return this.cfg.chainId ?? 420420777;
+  }
+
+  /** The solver's key for an intent on this vault: unique across chains and vaults. */
+  ref(nonce: number): string {
+    return `${this.chainId}:${this.address.toLowerCase()}:${nonce}`;
+  }
+
   private async logs(topics: (string | string[] | null)[], from: number, to: number): Promise<Log[]> {
     const out: Log[] = [];
     for (let start = from; start <= to; start += CHUNK) {

@@ -266,6 +266,17 @@ def _llm_constraints(prompt: str, pools: dict) -> dict:
     return _sanitize_llm_constraints(parsed if isinstance(parsed, dict) else {})
 
 
+REF_RE = re.compile(r"^[0-9A-Za-z:_.\-]{1,100}$")
+
+
+def _nonce_of_ref(ref: str) -> int:
+    """The intent nonce is the last colon-separated segment of a ref (a bare nonce is its own ref)."""
+    last = ref.rsplit(":", 1)[-1]
+    if not last.isdigit():
+        raise Exception("ref must end with a numeric nonce")
+    return int(last)
+
+
 def _dump(obj: dict) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"))
 
@@ -305,11 +316,16 @@ def _explain_pools(pools: dict, constraints: dict, split: list) -> list:
     return rows
 
 
-def _adjudicate(prompt: str, nonce: int) -> str:
-    """Full deterministic-output adjudication. Runs inside gl.eq_principle.strict_eq."""
+def _adjudicate(prompt: str, nonce: int, ref: str = "") -> str:
+    """Full deterministic-output adjudication. Runs inside gl.eq_principle.strict_eq.
+
+    `ref` is an opaque caller key (e.g. "chainId:vault:nonce") echoed into the verdict so a relayer can
+    confirm it received the verdict for the intent it asked about."""
 
     def rejected(reason: str, screen: str, constraints=None, pools_rows=None) -> str:
         out = _rejected(nonce, reason)
+        if ref:
+            out["ref"] = ref
         out["trace"] = {"screen": screen, "constraints": constraints, "pools": pools_rows or []}
         return _dump(out)
 
@@ -350,6 +366,8 @@ def _adjudicate(prompt: str, nonce: int) -> str:
         ],
         "trace": {"screen": "passed", "constraints": trace_constraints, "pools": rows},
     }
+    if ref:
+        payload["ref"] = ref
     _verify_payload(payload, pools, constraints)
     return _dump(payload)
 
@@ -368,18 +386,31 @@ class IntelligentVaultSolver(gl.Contract):
 
     @gl.public.write
     def adjudicate_intent(self, nonce: int, raw_prompt: str, deposit_amount: int) -> str:
+        """Legacy entry point for a single vault: the ref is just the nonce."""
         if nonce < 0:
             raise Exception("nonce must be non-negative")
+        return self._adjudicate_ref(str(nonce), raw_prompt, deposit_amount)
+
+    @gl.public.write
+    def adjudicate_ref(self, ref: str, raw_prompt: str, deposit_amount: int) -> str:
+        """Adjudicate an intent identified by `ref` ("chainId:vault:nonce"), so one solver can serve
+        several settlement vaults on different chains without nonce collisions."""
+        return self._adjudicate_ref(ref, raw_prompt, deposit_amount)
+
+    def _adjudicate_ref(self, ref: str, raw_prompt: str, deposit_amount: int) -> str:
+        if not REF_RE.match(ref):
+            raise Exception("invalid ref")
+        nonce = _nonce_of_ref(ref)
         if deposit_amount <= 0:
             raise Exception("deposit_amount must be positive")
 
         # Idempotent: relayer retries get the original verdict back.
-        existing = self._find(nonce)
+        existing = self._find_ref(ref)
         if existing is not None:
             return json.dumps(existing["payload"], sort_keys=True, separators=(",", ":"))
 
         prompt = raw_prompt.strip()
-        solve = lambda: _adjudicate(prompt, nonce)
+        solve = lambda: _adjudicate(prompt, nonce, ref if ref != str(nonce) else "")
 
         result_json = gl.eq_principle.strict_eq(solve)
 
@@ -393,7 +424,7 @@ class IntelligentVaultSolver(gl.Contract):
                 raise Exception("consensus payload targets an unknown address")
 
         history = json.loads(self.execution_history_json)
-        history.append({"nonce": nonce, "deposit_amount": str(deposit_amount), "payload": payload})
+        history.append({"ref": ref, "nonce": nonce, "deposit_amount": str(deposit_amount), "payload": payload})
         self.execution_history_json = json.dumps(history[-MAX_HISTORY_ENTRIES:], sort_keys=True, separators=(",", ":"))
         return result_json
 
@@ -407,7 +438,11 @@ class IntelligentVaultSolver(gl.Contract):
 
     @gl.public.view
     def get_result(self, nonce: int) -> str:
-        entry = self._find(nonce)
+        return self.get_result_ref(str(nonce))
+
+    @gl.public.view
+    def get_result_ref(self, ref: str) -> str:
+        entry = self._find_ref(ref)
         if entry is None:
             return ""
         return json.dumps(entry["payload"], sort_keys=True, separators=(",", ":"))
@@ -420,8 +455,8 @@ class IntelligentVaultSolver(gl.Contract):
     def get_admin(self) -> str:
         return self.admin_address
 
-    def _find(self, nonce: int):
+    def _find_ref(self, ref: str):
         for entry in json.loads(self.execution_history_json):
-            if entry["nonce"] == nonce:
+            if entry.get("ref", str(entry["nonce"])) == ref:
                 return entry
         return None

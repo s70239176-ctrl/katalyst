@@ -9,7 +9,7 @@ import {
   type ContractRunner,
   type Log,
 } from 'ethers';
-import { VAULT_ADDRESS, VAULT_DEPLOY_BLOCK, explorerBlockUrl, getProvider, getRelayerWallet, retry } from './config.js';
+import { getProvider, getRelayerWallet, retry, type ChainCfg } from './config.js';
 
 const ABI = [
   'function executeAdjudicatedIntent(uint64 nonce, address user, uint256 amount, bytes32 promptHash, (address pool, uint8 pct, bytes8 eco)[] legs)',
@@ -50,15 +50,15 @@ export interface VerdictLeg {
   eco_score: string;
 }
 
-export function vault(runner: ContractRunner = getProvider()): Contract {
-  return new Contract(getAddress(VAULT_ADDRESS()), ABI, runner);
+export function vault(chain: ChainCfg, runner?: ContractRunner): Contract {
+  return new Contract(getAddress(chain.vault), ABI, runner ?? getProvider(chain));
 }
 
 const nonceTopic = (n: number): string => zeroPadValue(toBeHex(n), 32);
 
-async function logs(topics: (string | string[])[], from: number, to: number): Promise<Log[]> {
-  const p = getProvider();
-  const address = getAddress(VAULT_ADDRESS());
+async function logs(chain: ChainCfg, topics: (string | string[])[], from: number, to: number): Promise<Log[]> {
+  const p = getProvider(chain);
+  const address = getAddress(chain.vault);
   const out: Log[] = [];
   for (let start = from; start <= to; start += LOG_CHUNK) {
     out.push(...(await retry(() => p.getLogs({ address, topics, fromBlock: start, toBlock: Math.min(start + LOG_CHUNK - 1, to) }))));
@@ -67,13 +67,13 @@ async function logs(topics: (string | string[])[], from: number, to: number): Pr
 }
 
 /** Load the deposit event for `nonce`. `hintBlock` (the deposit block) avoids scanning from deployment. */
-export async function loadIntent(nonce: number, hintBlock?: number): Promise<Intent | null> {
-  const v = vault();
+export async function loadIntent(chain: ChainCfg, nonce: number, hintBlock?: number): Promise<Intent | null> {
+  const v = vault(chain);
   const topic = v.interface.getEvent('IntentDeposited')!.topicHash;
-  const head = await retry(() => getProvider().getBlockNumber());
+  const head = await retry(() => getProvider(chain).getBlockNumber());
 
   const tryRange = async (from: number, to: number): Promise<Intent | null> => {
-    for (const log of await logs([topic, nonceTopic(nonce)], from, to)) {
+    for (const log of await logs(chain, [topic, nonceTopic(nonce)], from, to)) {
       const parsed = v.interface.parseLog(log);
       if (parsed?.name === 'IntentDeposited') {
         return {
@@ -92,22 +92,22 @@ export async function loadIntent(nonce: number, hintBlock?: number): Promise<Int
     const hit = await tryRange(Math.max(0, hintBlock - 1), Math.min(head, hintBlock + 1));
     if (hit) return hit;
   }
-  return tryRange(VAULT_DEPLOY_BLOCK(), head);
+  return tryRange(chain.deployBlock, head);
 }
 
-export async function isPending(nonce: number): Promise<boolean> {
-  return BigInt((await vault().getFunction('pending')(nonce)) as string) !== 0n;
+export async function isPending(chain: ChainCfg, nonce: number): Promise<boolean> {
+  return BigInt((await vault(chain).getFunction('pending')(nonce)) as string) !== 0n;
 }
 
-export async function findSettlement(nonce: number, fromBlock: number): Promise<Settlement | null> {
-  const v = vault();
+export async function findSettlement(chain: ChainCfg, nonce: number, fromBlock: number): Promise<Settlement | null> {
+  const v = vault(chain);
   const kinds: Array<[Settlement['kind'], string]> = [
     ['executed', v.interface.getEvent('IntentExecuted')!.topicHash],
     ['rejected', v.interface.getEvent('IntentRejected')!.topicHash],
     ['cancelled', v.interface.getEvent('IntentCancelled')!.topicHash],
   ];
-  const head = await retry(() => getProvider().getBlockNumber());
-  const found = await logs([kinds.map(([, t]) => t), nonceTopic(nonce)], fromBlock, head);
+  const head = await retry(() => getProvider(chain).getBlockNumber());
+  const found = await logs(chain, [kinds.map(([, t]) => t), nonceTopic(nonce)], fromBlock, head);
   const log = found[0];
   if (!log) return null;
   const kind = kinds.find(([, t]) => t === log.topics[0])?.[0];
@@ -133,9 +133,9 @@ export interface SettleResult {
  * The call is simulated first; a vault error is surfaced by name (e.g. IntentNotPending when a
  * concurrent poll already settled it).
  */
-export async function settle(intent: Intent, approved: boolean, legs: VerdictLeg[], waitMs: number, deadline: number): Promise<SettleResult> {
-  const w = getRelayerWallet();
-  const c = vault(w);
+export async function settle(chain: ChainCfg, intent: Intent, approved: boolean, legs: VerdictLeg[], waitMs: number, deadline: number): Promise<SettleResult> {
+  const w = getRelayerWallet(chain);
+  const c = vault(chain, w);
   const hash = promptHashOf(intent.prompt);
 
   let fn: ReturnType<Contract['getFunction']>;
@@ -150,7 +150,7 @@ export async function settle(intent: Intent, approved: boolean, legs: VerdictLeg
 
   await fn.staticCall(...args);
   const tx = (await fn(...args)) as { hash: string };
-  const receipt = await getProvider().waitForTransaction(tx.hash, 1, waitMs);
+  const receipt = await getProvider(chain).waitForTransaction(tx.hash, 1, waitMs);
   if (!receipt) return { txHash: tx.hash, blockNumber: 0 };
   if (receipt.status !== 1) throw new Error(`Settlement ${tx.hash} reverted`);
 
@@ -160,7 +160,7 @@ export async function settle(intent: Intent, approved: boolean, legs: VerdictLeg
   const remaining = deadline - Date.now();
   if (remaining < REFUND_MIN_BUDGET_MS) return result;
   try {
-    const refund = await forwardStorageRefund(intent.user, receipt.blockNumber, receipt.fee, Math.min(remaining - 4_000, 25_000));
+    const refund = await forwardStorageRefund(chain, intent.user, receipt.blockNumber, receipt.fee, Math.min(remaining - 4_000, 25_000));
     if (refund) result.refund = refund;
   } catch (err) {
     console.error('[api] refund forwarding failed:', err instanceof Error ? err.message : err);
@@ -173,9 +173,9 @@ export async function settle(intent: Intent, approved: boolean, legs: VerdictLeg
  * the depositor paid it. With no daemon to track balances, measure it from the settlement block:
  * refund = balance(B) - balance(B-1) + fee, valid only if the relayer sent exactly one tx in block B.
  */
-async function forwardStorageRefund(user: string, blockNumber: number, feeWei: bigint, waitMs: number): Promise<{ amount: string; txHash: string } | null> {
-  const p = getProvider();
-  const w = getRelayerWallet();
+async function forwardStorageRefund(chain: ChainCfg, user: string, blockNumber: number, feeWei: bigint, waitMs: number): Promise<{ amount: string; txHash: string } | null> {
+  const p = getProvider(chain);
+  const w = getRelayerWallet(chain);
   const block = (await p.send('eth_getBlockByNumber', [toBeHex(blockNumber), true])) as { transactions: Array<{ from: string }> };
   const mine = block.transactions.filter((t) => t.from.toLowerCase() === w.address.toLowerCase()).length;
   if (mine !== 1) return null; // ambiguous: another relayer tx shares the block
@@ -193,4 +193,3 @@ async function forwardStorageRefund(user: string, blockNumber: number, feeWei: b
   return { amount: refund.toString(), txHash: tx.hash };
 }
 
-export { explorerBlockUrl };

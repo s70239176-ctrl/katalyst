@@ -1,5 +1,6 @@
 // Deploy genlayer/intelligent_vault_solver.py to GenLayer Studionet (gasless; same flow as our other projects).
-//   node scripts/deploy_genlayer.mjs
+//   node scripts/deploy_genlayer.mjs                      -> the Katalyst solver (recorded in .env)
+//   node scripts/deploy_genlayer.mjs --file <path.py> --args '<json array>'   -> any contract (NOT recorded in .env)
 // Uses GENLAYER_PRIVATE_KEY from .env, or generates a throwaway key and stores it there.
 import 'dotenv/config';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -20,10 +21,13 @@ let key = process.env.GENLAYER_PRIVATE_KEY?.trim();
 if (!key) { key = generatePrivateKey(); setEnv('GENLAYER_PRIVATE_KEY', key); console.log('generated GenLayer key -> relayer/.env'); }
 const account = createAccount(key);
 const client = createClient({ chain, account });
-const code = readFileSync('../genlayer/intelligent_vault_solver.py', 'utf8');
+const flag = (n) => { const i = process.argv.indexOf('--' + n); return i > 0 ? process.argv[i + 1] : undefined; };
+const file = flag('file');
+const code = readFileSync(file ?? '../genlayer/intelligent_vault_solver.py', 'utf8');
+const ctorArgs = flag('args') !== undefined ? JSON.parse(flag('args')) : [account.address];
 
 console.log(`deploying IntelligentVaultSolver to ${chain.name} from ${account.address} ...`);
-const hash = await client.deployContract({ code, args: [account.address] });
+const hash = await client.deployContract({ code, args: ctorArgs });
 console.log('deploy tx', hash);
 
 let address;
@@ -40,7 +44,8 @@ for (let i = 0; i < 60 && !address; i++) {
   }
 }
 if (!address) throw new Error('deploy timed out');
-console.log('GENLAYER_CONTRACT_ADDRESS=' + address);
+console.log((file ? 'CONTRACT_ADDRESS=' : 'GENLAYER_CONTRACT_ADDRESS=') + address);
+if (file) { console.log('Custom contract: .env was not modified.'); process.exit(0); }
 setEnv('GENLAYER_CONTRACT_ADDRESS', address);
 setEnv('GENLAYER_CHAIN', chain === chains.studionet ? 'studionet' : (process.env.GENLAYER_CHAIN ?? 'studionet'));
 console.log('recorded in relayer/.env');

@@ -1,3 +1,4 @@
+import { activeChain } from './chains';
 import { normalizeVerdictRecord, type IntentPhase, type RelayerHealth, type VerdictRecord } from './types';
 
 /**
@@ -53,15 +54,17 @@ interface RelayResponse {
   error?: string;
 }
 
-const glTxByNonce = new Map<number, string>();
-const lastRecord = new Map<number, VerdictRecord>();
-const consecutiveErrors = new Map<number, number>();
+// Keyed by chain + nonce: nonces repeat across settlement chains.
+const glTxByNonce = new Map<string, string>();
+const lastRecord = new Map<string, VerdictRecord>();
+const consecutiveErrors = new Map<string, number>();
+const k = (nonce: number): string => `${activeChain().key}:${nonce}`;
 
-const CACHE_KEY = `katalyst.verdicts.${import.meta.env.VITE_VAULT_ADDRESS ?? 'default'}`;
+const cacheKey = (): string => `katalyst.verdicts.${activeChain().key}.${activeChain().vault || 'default'}`;
 
 function readCache(): Record<string, VerdictRecord> {
   try {
-    return JSON.parse(localStorage.getItem(CACHE_KEY) ?? '{}') as Record<string, VerdictRecord>;
+    return JSON.parse(localStorage.getItem(cacheKey()) ?? '{}') as Record<string, VerdictRecord>;
   } catch {
     return {};
   }
@@ -71,7 +74,7 @@ function remember(record: VerdictRecord): void {
   try {
     const all = readCache();
     all[String(record.nonce)] = record;
-    localStorage.setItem(CACHE_KEY, JSON.stringify(all));
+    localStorage.setItem(cacheKey(), JSON.stringify(all));
   } catch {
     /* storage unavailable: history simply won't have consensus details */
   }
@@ -116,23 +119,23 @@ export async function fetchVerdict(nonce: number, hint?: { block?: number }): Pr
     }
   }
 
-  const params = new URLSearchParams({ nonce: String(nonce) });
+  const params = new URLSearchParams({ nonce: String(nonce), chain: activeChain().key });
   if (hint?.block) params.set('block', String(hint.block));
-  const gl = glTxByNonce.get(nonce);
+  const gl = glTxByNonce.get(k(nonce));
   if (gl) params.set('gl', gl);
 
   try {
     const { status, body } = await getJson<RelayResponse>(`/api/relay?${params}`);
     if (status === 404) return null;
     if (status >= 400) throw new Error(body.error ?? `HTTP ${status}`);
-    consecutiveErrors.set(nonce, 0);
+    consecutiveErrors.set(k(nonce), 0);
 
     const learned = body.glTx ?? body.genlayer?.txHash;
-    if (learned) glTxByNonce.set(nonce, learned);
+    if (learned) glTxByNonce.set(k(nonce), learned);
     const fresh = toRecord(nonce, body);
     if (!fresh) return null;
     // Only the poll that sent the settlement sees the refund and votes; keep them across later polls.
-    const prev = lastRecord.get(nonce);
+    const prev = lastRecord.get(k(nonce));
     const record: VerdictRecord = {
       ...fresh,
       ...(fresh.genlayer ?? prev?.genlayer ? { genlayer: (fresh.genlayer ?? prev?.genlayer)! } : {}),
@@ -140,13 +143,13 @@ export async function fetchVerdict(nonce: number, hint?: { block?: number }): Pr
       ...(fresh.refund ?? prev?.refund ? { refund: (fresh.refund ?? prev?.refund)! } : {}),
       ...(fresh.user ? {} : { user: prev?.user ?? '' }),
     };
-    lastRecord.set(nonce, record);
+    lastRecord.set(k(nonce), record);
     if (record.phase === 'executed' || record.phase === 'rejected') remember(record);
     return record;
   } catch (err) {
     // Tolerate transient failures; surface a persistent one so the UI can offer a refund.
-    const n = (consecutiveErrors.get(nonce) ?? 0) + 1;
-    consecutiveErrors.set(nonce, n);
+    const n = (consecutiveErrors.get(k(nonce)) ?? 0) + 1;
+    consecutiveErrors.set(k(nonce), n);
     if (n >= 4) {
       const now = Date.now();
       return { nonce, user: '', amount: '0', prompt: '', phase: 'failed', error: err instanceof Error ? err.message : 'Relayer error', receivedAt: now, updatedAt: now };

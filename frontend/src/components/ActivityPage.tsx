@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchUserVerdicts } from '../utils/api';
+import { activeChain, tokenSymbol } from '../utils/chains';
 import { fetchUserIntents } from '../utils/history';
-import { TOKEN_SYMBOL, formatPot, type UserIntent, type VerdictRecord, type WalletState } from '../utils/types';
+import { formatPot, type UserIntent, type VerdictRecord, type WalletState } from '../utils/types';
 import { Badge, EmptyState, Skeleton } from './ui';
 
 interface ActivityPageProps {
@@ -56,7 +57,7 @@ export function ActivityPage({ wallet, onConnect, onOpen, refreshKey }: Activity
           <h2 id="activity-title" className="text-lg font-semibold tracking-tight">
             Your intents
           </h2>
-          <p className="text-sm text-muted">Read from vault events on Portaldot. Select a row for the full receipt.</p>
+          <p className="text-sm text-muted">Read from vault events on {activeChain().name}. Select a row for the full receipt.</p>
         </div>
         <button type="button" className="btn btn-sm" onClick={() => void load()} disabled={loading}>
           {loading ? 'Refreshing…' : 'Refresh'}
@@ -103,7 +104,7 @@ export function ActivityPage({ wallet, onConnect, onOpen, refreshKey }: Activity
                       <td className="tabular-nums text-muted">{r.nonce}</td>
                       <td className="max-w-[26rem] truncate">{r.prompt}</td>
                       <td className="text-right tabular-nums">
-                        {formatPot(r.amount)} <span className="text-subtle">{TOKEN_SYMBOL}</span>
+                        {formatPot(r.amount)} <span className="text-subtle">{tokenSymbol()}</span>
                       </td>
                       <td>
                         <Badge tone={statusTone(status)}>{status === 'Pending' ? 'In progress' : status}</Badge>

@@ -1,22 +1,30 @@
 import { formatEther } from 'ethers';
-import { CHAIN_ID, VAULT_ADDRESS, getProvider, getRelayerWallet, handleError, json } from './_lib/config.js';
+import { chains, getProvider, getRelayerWallet, handleError, json } from './_lib/config.js';
 import { genlayerChainName, genlayerContract } from './_lib/genlayer.js';
 import { vault } from './_lib/vault.js';
 
-/** Relayer status for the Network page. `relayerMatchesVault` flags a mis-set RELAYER_PRIVATE_KEY. */
+/** Relayer status for the Network page. `relayerMatchesVault` flags a mis-set relayer key on any chain. */
 export async function GET(): Promise<Response> {
   try {
-    const wallet = getRelayerWallet();
-    const [balance, onChainRelayer] = await Promise.all([getProvider().getBalance(wallet.address), vault().getFunction('relayer')() as Promise<string>]);
+    const rows = await Promise.all(
+      chains().map(async (c) => {
+        const wallet = getRelayerWallet(c);
+        const [balance, onChain] = await Promise.all([getProvider(c).getBalance(wallet.address), vault(c).getFunction('relayer')() as Promise<string>]);
+        return { key: c.key, name: c.name, chainId: c.chainId, vault: c.vault, relayer: wallet.address, relayerMatchesVault: onChain.toLowerCase() === wallet.address.toLowerCase(), relayerBalance: formatEther(balance) };
+      }),
+    );
+    const first = rows[0]!;
+    const match = rows.every((r) => r.relayerMatchesVault);
     return json({
-      ok: onChainRelayer.toLowerCase() === wallet.address.toLowerCase(),
+      ok: match,
       mode: 'serverless',
-      relayer: wallet.address,
-      relayerMatchesVault: onChainRelayer.toLowerCase() === wallet.address.toLowerCase(),
-      relayerBalance: formatEther(balance),
-      vault: VAULT_ADDRESS(),
+      relayer: first.relayer,
+      relayerMatchesVault: match,
+      relayerBalance: first.relayerBalance,
+      vault: first.vault,
+      chainId: first.chainId,
       genlayer: { chain: genlayerChainName(), contract: genlayerContract() },
-      chainId: CHAIN_ID,
+      chains: rows,
     });
   } catch (err) {
     return handleError(err);

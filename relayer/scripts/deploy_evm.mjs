@@ -1,14 +1,17 @@
 // Deploy contracts/evm/KatalystVault.sol to PortaldotV3 via the EVM RPC.
 //   node scripts/deploy_evm.mjs          -> estimate + balance check, nothing sent
 //   node scripts/deploy_evm.mjs --send   -> deploys and records the address in .env
+//   --rpc <url> --chain-id <n>           -> deploy to another EVM chain (prints the address; .env is not touched)
 import 'dotenv/config';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { ContractFactory, JsonRpcProvider, Wallet, formatEther, getAddress } from 'ethers';
 
 const send = process.argv.includes('--send');
+const flag = (n) => { const i = process.argv.indexOf('--' + n); return i > 0 ? process.argv[i + 1] : undefined; };
+const customRpc = flag('rpc');
 const need = (n) => { const v = process.env[n]?.trim(); if (!v) throw new Error(`${n} missing in .env`); return v; };
 
-const provider = new JsonRpcProvider(process.env.PORTALDOT_EVM_RPC ?? 'https://test-evm-rpc-v3.portaldot.dev', 420420777, { staticNetwork: true, batchMaxCount: 1 });
+const provider = new JsonRpcProvider(customRpc ?? process.env.PORTALDOT_EVM_RPC ?? 'https://test-evm-rpc-v3.portaldot.dev', Number(flag('chain-id') ?? 420420777), { staticNetwork: true, batchMaxCount: 1 });
 const deployer = new Wallet(need('DEPLOYER_PRIVATE_KEY'), provider);
 const relayer = new Wallet(need('RELAYER_PRIVATE_KEY')).address;
 const pools = need('SEED_POOLS').split(',').map((a) => getAddress(a.trim()));
@@ -37,7 +40,9 @@ const c = await factory.deploy(relayer, pools);
 console.log(`tx ${c.deploymentTransaction().hash} ... waiting`);
 await c.waitForDeployment();
 const address = await c.getAddress();
-console.log(`DEPLOYED KatalystVault at ${address}`);
+const deployBlock = (await c.deploymentTransaction().wait()).blockNumber;
+console.log(`DEPLOYED KatalystVault at ${address} (block ${deployBlock})`);
+if (customRpc) { console.log('Custom chain: add it to VAULTS / VITE_CHAINS; .env was not modified.'); process.exit(0); }
 
 let env = readFileSync('.env', 'utf8');
 env = /^VAULT_CONTRACT_ADDRESS=.*$/m.test(env) ? env.replace(/^VAULT_CONTRACT_ADDRESS=.*$/m, `VAULT_CONTRACT_ADDRESS=${address}`) : env + `\nVAULT_CONTRACT_ADDRESS=${address}\n`;

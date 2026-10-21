@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { Adjudication } from '../sdk';
 import { GENLAYER_CONTRACT, GENLAYER_EXPLORER } from '../utils/genlayer';
+import { activeChain, tokenSymbol } from '../utils/chains';
 import { getKatalyst } from '../utils/katalyst';
 import { explorerBlockUrl } from '../utils/substrate';
-import { TOKEN_SYMBOL, formatPot, shortAddress, shortHash, type UserIntent, type VerdictRecord } from '../utils/types';
+import { formatPot, shortAddress, shortHash, type UserIntent, type VerdictRecord } from '../utils/types';
 import { VerdictCard } from './VerdictCard';
 import { Badge, ExternalLink } from './ui';
 
@@ -25,8 +26,9 @@ export function GreyboxModal({ intent, record, onClose, onNavigate }: GreyboxMod
     setAdj(null);
     if (nonce === null || record?.genlayer || !GENLAYER_CONTRACT) return;
     let cancelled = false;
-    getKatalyst()
-      .genlayer?.findAdjudication(nonce)
+    const k = getKatalyst();
+    k.genlayer
+      ?.findAdjudication(k.vault.ref(nonce), activeChain().legacyNonceRefs ? nonce : undefined)
       .then((a) => !cancelled && setAdj(a))
       .catch(() => undefined);
     return () => {
@@ -69,7 +71,7 @@ export function GreyboxModal({ intent, record, onClose, onNavigate }: GreyboxMod
 
         <div className="mt-4 flex flex-wrap gap-2">
           <Badge tone="neutral">
-            {formatPot(intent.amount)} {TOKEN_SYMBOL}
+            {formatPot(intent.amount)} {tokenSymbol()}
           </Badge>
           {outcome && <Badge tone={outcome.status === 'Executed' ? 'ok' : outcome.status === 'Rejected' ? 'bad' : 'warn'}>{outcome.status}</Badge>}
           {gl ? (
@@ -96,7 +98,7 @@ export function GreyboxModal({ intent, record, onClose, onNavigate }: GreyboxMod
                     {shortAddress(leg.targetPool)} <span className="text-subtle">· {leg.ecoScore}</span>
                   </span>
                   <span className="tabular-nums">
-                    {leg.percentage}% · {formatPot(leg.amount)} {TOKEN_SYMBOL}
+                    {leg.percentage}% · {formatPot(leg.amount)} {tokenSymbol()}
                   </span>
                 </div>
               ))}
@@ -143,7 +145,7 @@ export function GreyboxModal({ intent, record, onClose, onNavigate }: GreyboxMod
             {record?.refund && (
               <Row label="Storage refund returned">
                 <span className="tabular-nums">
-                  {formatPot(BigInt(record.refund.amount))} {TOKEN_SYMBOL}
+                  {formatPot(BigInt(record.refund.amount))} {tokenSymbol()}
                 </span>
               </Row>
             )}

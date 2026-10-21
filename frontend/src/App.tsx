@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityPage } from './components/ActivityPage';
+import { activeChain, chainId, tokenSymbol } from './utils/chains';
 import { GreyboxModal } from './components/GreyboxModal';
 import { Header, type Page } from './components/Header';
 import { IntentTerminal, EXAMPLES, type PreviewState } from './components/IntentTerminal';
@@ -14,7 +15,7 @@ import { ExternalLink, Notice } from './components/ui';
 import { POLL_INTERVAL_MS, fetchVerdict } from './utils/api';
 import { previewIntent } from './utils/genlayer';
 import {
-  VAULT_ADDRESS,
+  vaultAddress,
   cancelIntent,
   connectWallet,
   depositIntent,
@@ -25,22 +26,10 @@ import {
   pingNetwork,
   subscribeBalance,
   subscribeWalletEvents,
-  switchToPortaldot,
+  switchToChain,
   type DepositReceipt,
 } from './utils/substrate';
-import {
-  CHAIN_ID,
-  TOKEN_SYMBOL,
-  formatPot,
-  shortHash,
-  type FlowStage,
-  type IntentOutcome,
-  type NetworkStatus,
-  type UserIntent,
-  type VerdictPayload,
-  type VerdictRecord,
-  type WalletState,
-} from './utils/types';
+import { formatPot, shortHash, type FlowStage, type IntentOutcome, type NetworkStatus, type UserIntent, type VerdictPayload, type VerdictRecord, type WalletState } from './utils/types';
 
 const MAX_POLLS = 150;
 
@@ -150,7 +139,7 @@ export default function App() {
     }
   }, []);
 
-  const wrongNetwork = wallet !== null && walletChain !== null && walletChain !== CHAIN_ID;
+  const wrongNetwork = wallet !== null && walletChain !== null && walletChain !== chainId();
 
   // ---- preview ------------------------------------------------------------------
   const handlePreview = useCallback(async () => {
@@ -173,7 +162,7 @@ export default function App() {
 
       // Check the chain first (fast and authoritative). In serverless mode the relay call below does real
       // work and can take a while, so a settled intent must never wait on it.
-      const result = await fetchOutcome(VAULT_ADDRESS, d.nonce, d.blockNumber).catch(() => null);
+      const result = await fetchOutcome(vaultAddress(), d.nonce, d.blockNumber).catch(() => null);
       if (token !== pollToken.current) return;
 
       if (result) {
@@ -216,7 +205,7 @@ export default function App() {
     setDeposit(null);
     setStage('depositing');
     try {
-      const d = await depositIntent(VAULT_ADDRESS, prompt, amount);
+      const d = await depositIntent(vaultAddress(), prompt, amount);
       setDeposit(d);
       setStage('adjudicating');
       void pollLifecycle(d);
@@ -230,7 +219,7 @@ export default function App() {
     if (!deposit) return;
     setCancelling(true);
     try {
-      await cancelIntent(VAULT_ADDRESS, deposit);
+      await cancelIntent(vaultAddress(), deposit);
       void pollLifecycle(deposit);
     } catch (err) {
       setMessage(errorText(err, 'Cancel failed (the relayer may have just settled it)'));
@@ -252,14 +241,14 @@ export default function App() {
 
   // ---- derived UI state ---------------------------------------------------------
   const busy = stage === 'depositing' || stage === 'adjudicating' || stage === 'settling';
-  const disabledReason = !VAULT_ADDRESS
+  const disabledReason = !vaultAddress()
     ? 'The vault address is not configured (VITE_VAULT_ADDRESS).'
     : network !== 'online'
-      ? 'Waiting for the Portaldot network…'
+      ? `Waiting for ${activeChain().name}…`
       : !wallet
         ? 'Connect a wallet to deposit. You can still preview a verdict without one.'
         : wrongNetwork
-          ? 'Switch your wallet to Portaldot V3 Testnet.'
+          ? `Switch your wallet to ${activeChain().name}.`
           : undefined;
 
   const steps: Step[] = (() => {
@@ -269,11 +258,11 @@ export default function App() {
     const failed = stage === 'error' && !settled;
     return [
       {
-        title: 'Deposit locked on Portaldot',
+        title: `Deposit locked on ${activeChain().name}`,
         state: stage === 'depositing' ? 'active' : deposit ? 'done' : 'pending',
         detail: deposit ? (
           <>
-            {formatPot(deposit.amount)} {TOKEN_SYMBOL} ·{' '}
+            {formatPot(deposit.amount)} {tokenSymbol()} ·{' '}
             <ExternalLink href={explorerBlockUrl(deposit.blockNumber)} mono>
               {shortHash(deposit.txHash)}
             </ExternalLink>
@@ -295,7 +284,7 @@ export default function App() {
         ) : undefined,
       },
       {
-        title: 'Settlement on Portaldot',
+        title: `Settlement on ${activeChain().name}`,
         state: settled ? 'done' : failed && gl ? 'failed' : record?.phase === 'settling' ? 'active' : 'pending',
         detail: outcome ? (
           <>
@@ -333,14 +322,14 @@ export default function App() {
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
         {wrongNetwork && (
           <div className="mb-6">
-            <Notice tone="warn" title="Wrong network" action={<button type="button" className="btn btn-sm" onClick={() => void switchToPortaldot().then(syncWallet)}>Switch network</button>}>
-              Your wallet is on chain {walletChain}. Katalyst runs on Portaldot V3 Testnet (chain {CHAIN_ID}).
+            <Notice tone="warn" title="Wrong network" action={<button type="button" className="btn btn-sm" onClick={() => void switchToChain().then(syncWallet)}>Switch network</button>}>
+              Your wallet is on chain {walletChain}. Katalyst is set to {activeChain().name} (chain {chainId()}).
             </Notice>
           </div>
         )}
         {network === 'offline' && (
           <div className="mb-6">
-            <Notice tone="bad" title="Cannot reach the Portaldot network">
+            <Notice tone="bad" title={`Cannot reach ${activeChain().name}`}>
               The EVM RPC is not responding. Retrying automatically.
             </Notice>
           </div>
@@ -425,7 +414,7 @@ export default function App() {
                       </h2>
                       <ol className="mt-4 space-y-4 text-sm">
                         {[
-                          ['Deposit', 'Your funds are escrowed in a vault contract on Portaldot together with your intent.'],
+                          ['Deposit', `Your funds are escrowed in a vault contract on ${activeChain().name} together with your intent.`],
                           ['Adjudicate', 'GenLayer validators read the intent, apply guardrails and agree on a route. No single party decides.'],
                           ['Settle', 'The vault re-checks the route on-chain (totals, whitelist) and only then pays the pools.'],
                         ].map(([t, d], i) => (
@@ -475,7 +464,7 @@ export default function App() {
       <footer className="border-t border-line py-6">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 text-xs text-subtle">
           <span>Katalyst · Testnet software, unaudited. Do not use with funds you cannot lose.</span>
-          <span>GenLayer decides · Portaldot settles</span>
+          <span>GenLayer decides · {activeChain().name} settles</span>
         </div>
       </footer>
 

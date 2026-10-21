@@ -1,5 +1,6 @@
 import { useMemo, useRef, type UIEvent } from 'react';
-import { TOKEN_SYMBOL, formatPot, parsePot } from '../utils/types';
+import { activeChain, tokenSymbol } from '../utils/chains';
+import { formatPot, parsePot } from '../utils/types';
 import { Spinner } from './ui';
 
 const TOKEN_RE = new RegExp(
@@ -31,10 +32,6 @@ export const EXAMPLES: ReadonlyArray<{ label: string; prompt: string }> = [
   { label: 'Highest yield, any tier', prompt: 'Max yield, I accept any eco tier.' },
 ];
 
-/** Typical network fee on the Portaldot testnet (gas + a storage deposit that is refunded to you). */
-const FEE_ESTIMATE = 4;
-/** Balance the chain reserves up-front for gas before refunding the unused part. */
-const UPFRONT_RESERVE = 9;
 
 export type PreviewState =
   | { status: 'idle' }
@@ -70,6 +67,9 @@ export function IntentTerminal({
   onPreview,
   onSubmit,
 }: IntentTerminalProps) {
+  const chain = activeChain();
+  const FEE_ESTIMATE = chain.feeEstimate;
+  const UPFRONT_RESERVE = chain.gasReserve;
   const overlayRef = useRef<HTMLDivElement>(null);
   const segments = useMemo(() => tokenize(prompt), [prompt]);
 
@@ -80,7 +80,7 @@ export function IntentTerminal({
     wei = null;
   }
   const amountValid = wei !== null && wei > 0n;
-  const requiredReserve = BigInt(UPFRONT_RESERVE) * 10n ** 18n;
+  const requiredReserve = parsePot(String(UPFRONT_RESERVE));
   const short = balance !== null && wei !== null && balance < wei + requiredReserve;
   const promptReady = prompt.trim().length > 0;
 
@@ -147,7 +147,7 @@ export function IntentTerminal({
         <div>
           <label htmlFor="amount" className="mb-1.5 flex items-baseline justify-between text-sm font-medium">
             <span>Amount to deposit</span>
-            {balance !== null && <span className="text-xs font-normal text-subtle">Balance {formatPot(balance)} {TOKEN_SYMBOL}</span>}
+            {balance !== null && <span className="text-xs font-normal text-subtle">Balance {formatPot(balance)} {tokenSymbol()}</span>}
           </label>
           <div className="relative">
             <input
@@ -159,7 +159,7 @@ export function IntentTerminal({
               aria-describedby="amount-help"
               className="input pr-24 text-right tabular-nums"
             />
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-subtle">{TOKEN_SYMBOL}</span>
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-subtle">{tokenSymbol()}</span>
           </div>
         </div>
         <div className="flex gap-2">
@@ -175,7 +175,9 @@ export function IntentTerminal({
       </div>
 
       <p id="amount-help" className="mt-2 text-xs text-subtle">
-        Estimated network fee ≈ {FEE_ESTIMATE} {TOKEN_SYMBOL}, including a storage deposit that the relayer returns to you after settlement. Keep about {UPFRONT_RESERVE} {TOKEN_SYMBOL} spare for gas.
+        {chain.portaldotNative
+          ? <>Estimated network fee ≈ {FEE_ESTIMATE} {tokenSymbol()}, including a storage deposit that the relayer returns to you after settlement. Keep about {UPFRONT_RESERVE} {tokenSymbol()} spare for gas.</>
+          : <>Estimated network fee ≈ {FEE_ESTIMATE} {tokenSymbol()}. Keep about {UPFRONT_RESERVE} {tokenSymbol()} spare for gas.</>}
       </p>
       {short && (
         <p role="status" className="mt-2 text-sm text-warn">

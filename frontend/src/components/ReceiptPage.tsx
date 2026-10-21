@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ProofBundle } from '../sdk';
 import { getKatalyst, katalystConfigured } from '../utils/katalyst';
-import { formatPot, poolLabel, TOKEN_SYMBOL } from '../utils/types';
+import { tokenSymbol } from '../utils/chains';
+import { formatPot, poolLabel } from '../utils/types';
 import { Notice, Spinner } from './ui';
 
 const W = 1200;
@@ -68,7 +69,7 @@ function ImpactCard({ proof, svgRef }: { proof: ProofBundle; svgRef: React.RefOb
       )}
 
       <text x="64" y="190" fontSize="64" fontWeight="700" fill="#e8edf4">
-        {formatPot(amount)} {TOKEN_SYMBOL}
+        {formatPot(amount)} {tokenSymbol()}
       </text>
       <text x="64" y="232" fontSize="22" fill="#9ba6b6">
         {executed ? `routed by GenLayer consensus · Intent #${proof.nonce}` : `${s.kind} and refunded · Intent #${proof.nonce}`}

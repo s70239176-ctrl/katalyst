@@ -26,6 +26,7 @@
   "include": [
     "src",
     "api",
-    "vite.config.ts"
+    "vite.config.ts",
+    "vite.widget.config.ts"
   ]
 }
