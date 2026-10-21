@@ -1,6 +1,6 @@
 import { parseVerdict, type VerdictPayload } from '../utils/types';
 import { GenLayerReader, isSuccessStatus, type Adjudication } from './genlayer';
-import { VaultReader, type DepositInfo, type SettlementInfo, type SettlementTx } from './vault';
+import { VaultReader, legsHashOf, routeLockOf, type DepositInfo, type SettlementInfo, type SettlementTx, type VaultPolicy } from './vault';
 
 export type CheckStatus = 'pass' | 'fail' | 'warn' | 'skip';
 
@@ -26,6 +26,8 @@ export interface ProofBundle {
     txHash: string;
     blockNumber: number;
     amountWei: string;
+    /** v2: protocol fee paid to the relayer. */
+    feeWei?: string;
     legs: Array<{ pool: string; pct: number; eco: string; amountWei: string }>;
   } | null;
   settlementTx: { from: string; fn: SettlementTx['fn'] } | null;
@@ -94,6 +96,10 @@ export async function verifyIntent(
     checks,
   };
 
+  const v2 = vault.version === 2;
+  const policy: VaultPolicy | null = v2 ? await vault.policy().catch(() => null) : null;
+  const ZERO = '0x' + '00'.repeat(32);
+
   // 1. Deposit
   const deposit = await vault.deposit(nonce, opts.hintBlock);
   if (!deposit) {
@@ -101,12 +107,14 @@ export async function verifyIntent(
     return bundle;
   }
   bundle.deposit = { ...deposit, amountWei: deposit.amountWei.toString() };
-  add('deposit', 'Deposit recorded on Portaldot', 'pass', `${fmt(deposit.amountWei)} from ${deposit.user} in block ${deposit.blockNumber}.`);
+  const locked = v2 && deposit.routeLock !== undefined && deposit.routeLock !== ZERO;
+  add('deposit', 'Deposit recorded on Portaldot', 'pass', `${fmt(deposit.amountWei)} from ${deposit.user} in block ${deposit.blockNumber}${locked ? ', with a locked route' : ''}.`);
 
   // 2. Settlement
   const settlement = await vault.settlement(nonce, deposit.blockNumber);
   if (!settlement) {
-    add('settled', 'Settled on Portaldot', 'warn', 'The intent is still pending; nothing has been settled yet.');
+    const prop = v2 ? await vault.proposal(nonce, deposit.blockNumber) : null;
+    add('settled', 'Settled on Portaldot', 'warn', prop ? `A settlement was proposed and is waiting out its delay (ready at unix ${prop.readyAt}); the owner can still veto it.` : 'The intent is still pending; nothing has been settled yet.');
     bundle.verdict = 'pending';
     return bundle;
   }
@@ -115,9 +123,13 @@ export async function verifyIntent(
     txHash: settlement.txHash,
     blockNumber: settlement.blockNumber,
     amountWei: settlement.amountWei.toString(),
+    ...(settlement.feeWei !== undefined ? { feeWei: settlement.feeWei.toString() } : {}),
     legs: settlement.legs.map((l) => ({ pool: l.pool, pct: l.pct, eco: l.eco, amountWei: l.amountWei.toString() })),
   };
   add('settled', 'Settled on Portaldot', 'pass', `${settlement.kind} in block ${settlement.blockNumber}.`);
+
+  const fee = settlement.feeWei ?? 0n;
+  const proposal = v2 && (settlement.kind === 'executed' || settlement.kind === 'vetoed') ? await vault.proposal(nonce, deposit.blockNumber) : null;
 
   // 3. Who submitted it, and was it bound to the deposit?
   // Prefer the transaction itself; the public RPC prunes old transactions but keeps event logs, so fall back
@@ -129,6 +141,14 @@ export async function verifyIntent(
     const who = tx ? tx.from : settlement.user;
     const ok = eqAddr(who, deposit.user);
     add('authorized', 'Submitted by the authorised party', ok ? 'pass' : 'fail', ok ? `Cancelled by the depositor${tx ? '' : ' (from the vault event; the transaction is no longer served by the RPC)'}.` : `Cancel was made by ${who}, not the depositor.`);
+  } else if (settlement.kind === 'expired') {
+    add('authorized', 'Submitted by the authorised party', 'pass', `Refunds after the timeout are permissionless${tx ? `; sent by ${tx.from}` : ''}: the depositor needed no gas.`);
+  } else if (settlement.kind === 'vetoed') {
+    const owner = policy?.owner;
+    const ok = tx && owner ? eqAddr(tx.from, owner) : true;
+    add('authorized', 'Submitted by the authorised party', ok ? 'pass' : 'warn', tx && owner ? (ok ? `Vetoed by the vault owner ${owner}.` : `Vetoed by ${tx.from}, which is not the current owner ${owner} (ownership may have changed).`) : 'Inferred from the vault event: only the owner can veto a proposed settlement.');
+  } else if (tx && tx.fn === 'finalizeSettlement') {
+    add('authorized', 'Submitted by the authorised party', proposal ? 'pass' : 'fail', proposal ? 'Finalised after the delay (anyone may); the relayer had proposed exactly this route.' : 'A finalisation without a recorded proposal.');
   } else if (tx) {
     const relayer = await vault.relayer();
     add('authorized', 'Submitted by the authorised party', eqAddr(tx.from, relayer) ? 'pass' : 'fail', eqAddr(tx.from, relayer) ? `Sent by the vault's relayer ${relayer}.` : `Sent by ${tx.from}, but the vault's relayer is ${relayer}.`);
@@ -136,20 +156,28 @@ export async function verifyIntent(
     add('authorized', 'Submitted by the authorised party', 'pass', "Inferred from the vault event: the contract only lets its relayer settle intents, and the RPC no longer serves this old transaction.");
   }
 
-  if (tx) {
+  // The amount the event reports must reconcile with the deposit.
+  const reconciled = settlement.kind === 'executed' ? settlement.amountWei + fee === deposit.amountWei
+    : settlement.kind === 'rejected' ? settlement.amountWei + fee === deposit.amountWei
+    : settlement.amountWei === deposit.amountWei;
+
+  if (tx && tx.fn !== 'finalizeSettlement' && tx.fn !== 'vetoSettlement' && tx.fn !== 'refundExpired') {
     const sameUser = tx.user === undefined || eqAddr(tx.user, deposit.user);
-    const bound = sameUser && tx.nonce === nonce && tx.amountWei === deposit.amountWei && tx.promptHash.toLowerCase() === deposit.promptHash.toLowerCase();
-    add('commitment', 'Settlement bound to the original deposit', bound ? 'pass' : 'fail', bound ? 'User, amount and prompt hash in the settlement match the deposit. The vault only accepts a settlement that reproduces the deposit-time commitment.' : 'The settlement arguments do not match the deposit.');
+    const sameLock = !v2 || (tx.routeLock ?? ZERO).toLowerCase() === (deposit.routeLock ?? ZERO).toLowerCase();
+    const sameExpiry = !v2 || tx.expiry === deposit.expiry;
+    const bound = sameUser && sameLock && sameExpiry && tx.nonce === nonce && tx.amountWei === deposit.amountWei && tx.promptHash.toLowerCase() === deposit.promptHash.toLowerCase();
+    add('commitment', 'Settlement bound to the original deposit', bound ? 'pass' : 'fail', bound ? `User, amount, prompt hash${v2 ? ', route lock and deadline' : ''} in the settlement match the deposit. The vault only accepts a settlement that reproduces the deposit-time commitment.` : 'The settlement arguments do not match the deposit.');
   } else {
-    const bound = eqAddr(settlement.user, deposit.user) && (settlement.kind === 'executed' ? settlement.amountWei : settlement.amountWei) === deposit.amountWei;
-    add('commitment', 'Settlement bound to the original deposit', bound ? 'pass' : 'fail', bound ? 'The settlement event names the same depositor and the full deposited amount; the vault emits it only after matching the deposit-time commitment.' : 'The settlement event does not match the deposit.');
+    const bound = eqAddr(settlement.user, deposit.user) && reconciled;
+    add('commitment', 'Settlement bound to the original deposit', bound ? 'pass' : 'fail', bound ? 'The settlement event names the same depositor and accounts for the full deposited amount; the vault emits it only after matching the deposit-time commitment.' : 'The settlement event does not match the deposit.');
   }
 
   // 4. GenLayer: did validators judge exactly this prompt, and did they agree?
+  const judged = settlement.kind === 'executed' || settlement.kind === 'rejected' || settlement.kind === 'vetoed';
   let adj: Adjudication | null = null;
   let verdict: VerdictPayload | null = null;
   let rawResult: string | null = null;
-  if (gl && settlement.kind !== 'cancelled') {
+  if (gl && judged) {
     // Independent reads: run them together.
     const [resultRes, adjRes] = await Promise.allSettled([gl.result(vault.ref(nonce), opts.legacyNonceRefs ? nonce : undefined), gl.findAdjudication(vault.ref(nonce), opts.legacyNonceRefs ? nonce : undefined)]);
     if (resultRes.status === 'fulfilled' && resultRes.value) {
@@ -181,7 +209,7 @@ export async function verifyIntent(
       add('same_prompt', 'GenLayer judged the deposited prompt', same ? 'pass' : 'fail', same ? 'The prompt and amount sent to GenLayer are identical to the on-chain deposit.' : 'The prompt or amount sent to GenLayer differs from the deposit.');
     }
   } else {
-    add('consensus', 'GenLayer validators agreed', 'skip', gl ? 'Not applicable: the depositor cancelled.' : 'GenLayer is not configured for this verification.');
+    add('consensus', 'GenLayer validators agreed', 'skip', gl ? `Not applicable: the intent ended by ${settlement.kind === 'expired' ? 'timeout refund' : 'cancellation'}.` : 'GenLayer is not configured for this verification.');
   }
 
   // 5. Verdict ↔ settlement
@@ -195,33 +223,59 @@ export async function verifyIntent(
         return leg !== undefined && leg.pct === a.percentage && leg.eco === a.eco_score;
       });
       const txLegs = tx?.legs ?? [];
-      const txMatches = tx === null || (txLegs.length === settlement.legs.length && txLegs.every((l) => onChain.get(l.pool.toLowerCase())?.pct === l.pct));
+      const txMatches = tx === null || txLegs.length === 0 || (txLegs.length === settlement.legs.length && txLegs.every((l) => onChain.get(l.pool.toLowerCase())?.pct === l.pct));
       add('verdict', 'Verdict matches what was paid', sameSet && txMatches ? 'pass' : 'fail', sameSet && txMatches ? `GenLayer approved ${verdict.allocations.map((a) => `${a.percentage}%`).join(' / ')} and exactly that was paid.` : 'The paid route differs from the GenLayer verdict.');
     }
 
-    // 6. Arithmetic
+    // 6. Arithmetic: v2 pays the deposit minus the fixed fee
+    const net = deposit.amountWei - fee;
     const total = settlement.legs.reduce((s, l) => s + l.pct, 0);
     const paid = settlement.legs.reduce((s, l) => s + l.amountWei, 0n);
-    const expected = expectedShares(deposit.amountWei, settlement.legs.map((l) => l.pct));
+    const expected = expectedShares(net, settlement.legs.map((l) => l.pct));
     const exact = settlement.legs.every((l, i) => l.amountWei === expected[i]);
-    const mathOk = total === 100 && paid === deposit.amountWei && settlement.amountWei === deposit.amountWei && exact;
-    add('math', 'Split is exact and nothing is left behind', mathOk ? 'pass' : 'fail', mathOk ? `Percentages total 100, ${fmt(paid)} paid out of ${fmt(deposit.amountWei)} deposited.` : `Percentages ${total}, paid ${fmt(paid)} of ${fmt(deposit.amountWei)}.`);
+    const mathOk = total === 100 && paid === net && settlement.amountWei === net && exact;
+    add('math', 'Split is exact and nothing is left behind', mathOk ? 'pass' : 'fail', mathOk ? `Percentages total 100, ${fmt(paid)} paid out of ${fmt(deposit.amountWei)} deposited${fee > 0n ? ` (${fmt(fee)} fee)` : ''}.` : `Percentages ${total}, paid ${fmt(paid)} of ${fmt(net)}.`);
 
-    // 7. Whitelist (current state)
+    // 7. Whitelist / pool registry (current state)
     const flags = await Promise.all(settlement.legs.map((l) => vault.isWhitelisted(l.pool)));
-    add('whitelist', 'Paid pools are whitelisted', flags.every(Boolean) ? 'pass' : 'warn', flags.every(Boolean) ? 'Every paid pool is on the vault whitelist.' : 'A paid pool is no longer on the whitelist (it may have been removed since).');
+    add('whitelist', v2 ? 'Paid pools are registered in the hub' : 'Paid pools are whitelisted', flags.every(Boolean) ? 'pass' : 'warn', flags.every(Boolean) ? (v2 ? 'Every paid pool is registered in the PoolHub.' : 'Every paid pool is on the vault whitelist.') : 'A paid pool is no longer registered (it may have been removed since).');
+
+    // v2-only guarantees
+    if (v2) {
+      if (policy) add('fee', 'Protocol fee is the one fixed at deployment', fee === policy.feeWei ? 'pass' : 'fail', fee === policy.feeWei ? `${fmt(fee)}, immutable in the vault, paid to the relayer.` : `Charged ${fmt(fee)} but the vault's fixed fee is ${fmt(policy.feeWei)}.`);
+      if (locked) {
+        const same = routeLockOf(settlement.legs).toLowerCase() === (deposit.routeLock ?? '').toLowerCase();
+        add('route_lock', 'Paid route equals the route the depositor locked', same ? 'pass' : 'fail', same ? 'The route the user previewed and committed to at deposit is exactly what was paid.' : 'The paid route does not match the lock.');
+      }
+      if (policy && policy.delaySeconds > 0) {
+        const same = proposal !== null && proposal.legsHash.toLowerCase() === legsHashOf(settlement.legs).toLowerCase();
+        add('delay', 'Settled through the safety delay', same ? 'pass' : 'fail', same ? `The relayer proposed this exact route and it waited out the ${policy.delaySeconds}s delay (the owner could veto it).` : 'No matching proposal precedes this settlement.');
+      }
+    }
+  } else if (settlement.kind === 'vetoed') {
+    const expectedBack = settlement.amountWei === deposit.amountWei;
+    add('refund', 'Deposit returned in full', expectedBack ? 'pass' : 'fail', expectedBack ? `${fmt(settlement.amountWei)} refunded in full, no fee.` : `Refunded ${fmt(settlement.amountWei)} of ${fmt(deposit.amountWei)}.`);
+    if (proposal && verdict && verdict.status === 'APPROVED') {
+      const verdictLegs = verdict.allocations.map((a) => ({ pool: a.target_pool, pct: a.percentage, eco: a.eco_score }));
+      const matched = legsHashOf(verdictLegs).toLowerCase() === proposal.legsHash.toLowerCase();
+      add('veto', 'The veto was justified', matched ? 'warn' : 'pass', matched ? "The vetoed proposal matched GenLayer's verdict: the owner blocked a legitimate route (the depositor was still refunded in full)." : "The vetoed proposal differed from GenLayer's verdict: the safety delay caught a bad route.");
+    } else {
+      add('veto', 'The veto was justified', 'skip', 'Could not compare the proposal with GenLayer\'s verdict.');
+    }
   } else {
-    // rejected / cancelled: the deposit must have been returned in full
-    const refunded = settlement.amountWei === deposit.amountWei;
-    add('refund', 'Deposit returned in full', refunded ? 'pass' : 'fail', refunded ? `${fmt(settlement.amountWei)} refunded to the depositor.` : `Refunded ${fmt(settlement.amountWei)} of ${fmt(deposit.amountWei)}.`);
+    // rejected / cancelled / expired: the deposit must come back (rejected keeps only the fixed fee)
+    const due = settlement.kind === 'rejected' ? deposit.amountWei - fee : deposit.amountWei;
+    const refunded = settlement.amountWei === due;
+    add('refund', settlement.kind === 'rejected' && fee > 0n ? 'Deposit returned minus the fixed fee' : 'Deposit returned in full', refunded ? 'pass' : 'fail', refunded ? `${fmt(settlement.amountWei)} refunded to the depositor${settlement.kind === 'rejected' && fee > 0n ? ` (${fmt(fee)} fee)` : ''}.` : `Refunded ${fmt(settlement.amountWei)}, expected ${fmt(due)}.`);
     if (settlement.kind === 'rejected') {
+      if (policy) add('fee', 'Protocol fee is the one fixed at deployment', fee === policy.feeWei ? 'pass' : 'fail', fee === policy.feeWei ? `${fmt(fee)}, immutable in the vault.` : `Charged ${fmt(fee)} but the vault's fixed fee is ${fmt(policy.feeWei)}.`);
       const rejected = verdict?.status === 'REJECTED';
       add('verdict', 'Rejection backed by a GenLayer verdict', verdict ? (rejected ? 'pass' : 'fail') : 'warn', verdict ? (rejected ? `GenLayer rejected it: ${verdict.reason ?? 'no reason given'}.` : 'GenLayer approved this intent but the relayer rejected it.') : 'The GenLayer verdict could not be read.');
     }
   }
 
   // 8. Optional: reproduce the verdict now
-  if (opts.rerun && gl && settlement.kind !== 'cancelled' && verdict) {
+  if (opts.rerun && gl && judged && verdict) {
     try {
       const again = await gl.preview(deposit.prompt);
       const key = (v: VerdictPayload) => v.status + '|' + v.allocations.map((a) => `${a.target_pool.toLowerCase()}:${a.percentage}`).sort().join(',');

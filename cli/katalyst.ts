@@ -11,6 +11,8 @@
  *   --vault / KATALYST_VAULT                  vault address (0x…)
  *   --rpc / KATALYST_RPC                      EVM RPC (default: PortaldotV3 testnet)
  *   --deploy-block / KATALYST_DEPLOY_BLOCK    vault deployment block (bounds log scans)
+ *   --version / KATALYST_VAULT_VERSION        1 (KatalystVault, default) or 2 (KatalystVaultV2 + PoolHub)
+ *   --hub / KATALYST_HUB                      v2 PoolHub address (read from the vault when omitted)
  *   --genlayer / KATALYST_GENLAYER_CONTRACT   solver address (0x…)
  *   --genlayer-chain / KATALYST_GENLAYER_CHAIN   studionet (default) | testnetAsimov | …
  */
@@ -25,6 +27,8 @@ const { values, positionals } = parseArgs({
     rpc: { type: 'string' },
     'deploy-block': { type: 'string' },
     genlayer: { type: 'string' },
+    version: { type: 'string' },
+    hub: { type: 'string' },
     'genlayer-chain': { type: 'string' },
     rerun: { type: 'boolean', default: false },
     json: { type: 'boolean', default: false },
@@ -45,7 +49,7 @@ function usage(): never {
   validators                  GenLayer validator participation
   simulate <contract> <method> '<json-args>'   Simulate any GenLayer contract method (free)
 
-Options: --json  --out <file>  --vault  --rpc  --deploy-block  --genlayer  --genlayer-chain`);
+Options: --json  --out <file>  --vault  --version  --hub  --rpc  --deploy-block  --genlayer  --genlayer-chain`);
   process.exit(command ? 2 : 0);
 }
 if (values.help || !command) usage();
@@ -61,6 +65,8 @@ const k = createKatalyst({
   vault,
   rpcUrl: values.rpc ?? env['KATALYST_RPC'] ?? 'https://test-evm-rpc-v3.portaldot.dev',
   deployBlock: Number(values['deploy-block'] ?? env['KATALYST_DEPLOY_BLOCK'] ?? 0),
+  version: Number(values.version ?? env['KATALYST_VAULT_VERSION'] ?? 1) === 2 ? 2 : 1,
+  ...((values.hub ?? env['KATALYST_HUB']) ? { hub: (values.hub ?? env['KATALYST_HUB'])! } : {}),
   ...(genlayerContract
     ? { genlayer: { contract: genlayerContract, chain: values['genlayer-chain'] ?? env['KATALYST_GENLAYER_CHAIN'] ?? 'studionet' } }
     : {}),

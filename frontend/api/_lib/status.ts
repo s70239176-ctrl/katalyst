@@ -90,6 +90,10 @@ async function checkChain(chain: ChainCfg, checks: StatusCheck[]): Promise<Chain
     add('relayer_balance', 'Relayer gas balance', m.relayerBalance < minBalance ? (m.relayerBalance < minBalance / 2 ? 'fail' : 'warn') : 'ok', `${m.relayerBalance.toFixed(2)} (alert below ${minBalance})`);
   } else add('relayer_balance', 'Relayer gas balance', 'fail', 'Could not read the balance');
   m.totalIntents = total.value !== null ? Number(total.value) : 0;
+  if (chain.version === 2) {
+    const paused = await timed(() => v.getFunction('paused')() as Promise<boolean>);
+    if (paused.value !== null) add('paused', 'Vault not paused', paused.value ? 'warn' : 'ok', paused.value ? 'The owner has paused deposits and settlement; refunds and withdrawals still work' : 'Accepting deposits');
+  }
 
   // Block time from two recent blocks (recent blocks are always served; old ones may be pruned).
   try {
@@ -112,7 +116,7 @@ async function checkChain(chain: ChainCfg, checks: StatusCheck[]): Promise<Chain
       for (let s = from; s <= head.value!; s += LOG_CHUNK) out.push(...(await retry(() => provider.getLogs({ address, topics, fromBlock: s, toBlock: Math.min(s + LOG_CHUNK - 1, head.value!) }))));
       return out;
     };
-    const [deposits, settled] = await Promise.all([scan([topic('IntentDeposited')]), scan([[topic('IntentExecuted'), topic('IntentRejected'), topic('IntentCancelled')]])]);
+    const [deposits, settled] = await Promise.all([scan([topic('IntentDeposited')]), scan([[topic('IntentExecuted'), topic('IntentRejected'), topic('IntentCancelled'), ...(chain.version === 2 ? [topic('IntentExpired'), topic('SettlementVetoed')] : [])]])]);
     const done = new Set(settled.map((l) => BigInt(l.topics[1]!).toString()));
     const open = deposits.filter((l) => !done.has(BigInt(l.topics[1]!).toString()));
     m.pending = open.length;

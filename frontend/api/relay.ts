@@ -13,6 +13,7 @@ import { chainByKey, explorerBlockUrl, handleError, intentRef, json, type ChainC
 import { genlayerTxUrl, parseVerdict, readResult, submitAdjudication, txState, type TxState, type Verdict } from './_lib/genlayer.js';
 import { notify, notifyEnabled } from './_lib/notify.js';
 import { findSettlement, loadIntent, settle, type Intent } from './_lib/vault.js';
+import { executeV2, finalizeV2, findProposal, isLocked, legsHashOf, refundExpiredV2, rejectV2, routeLockOf } from './_lib/vault_v2.js';
 
 /** Total wall-clock budget per invocation; vercel.json allows 60s, keep a safety margin. */
 const BUDGET_MS = 52_000;
@@ -45,7 +46,7 @@ export async function GET(request: Request): Promise<Response> {
     if (!intent) return json({ nonce, chain: chain.key, phase: 'not_found' }, 404);
     const base = { nonce, chain: chain.key, user: intent.user, amount: intent.amount.toString() };
 
-    return await advance(chain, intent, base, glHash, startedAt + BUDGET_MS);
+    return chain.version === 2 ? await advanceV2(chain, intent, base, glHash, startedAt + BUDGET_MS) : await advance(chain, intent, base, glHash, startedAt + BUDGET_MS);
   } catch (err) {
     return handleError(err);
   }
@@ -115,6 +116,130 @@ async function advance(chain: ChainCfg, intent: Intent, base: Record<string, unk
     if (name === 'IntentNotPending' || /nonce|replacement|already known|underpriced/i.test(err instanceof Error ? err.message : '')) {
       const after = await findSettlement(chain, nonce, intent.blockNumber);
       if (after) return json({ ...base, ...settledOut(after.kind, after), ...(genlayer ? { genlayer } : {}), verdict: verdictOut });
+      return json({ ...base, phase: 'settling', ...(glHash ? { glTx: glHash } : {}), verdict: verdictOut });
+    }
+    throw err;
+  }
+}
+
+/**
+ * v2: same idea, plus the new lifecycle states. One step per call:
+ *   expired -> refund; proposed (waiting out the safety delay) -> finalise when ready; else adjudicate and settle.
+ */
+async function advanceV2(chain: ChainCfg, intent: Intent, base: Record<string, unknown>, glHash: string | undefined, deadline: number): Promise<Response> {
+  const { nonce } = intent;
+  const ref = intentRef(chain, nonce);
+  const out = (phase: string, tx: { txHash: string; blockNumber: number }, extra: Record<string, unknown> = {}) => ({
+    ...base,
+    phase,
+    portaldot: { txHash: tx.txHash, explorerUrl: tx.blockNumber ? explorerBlockUrl(chain, tx.blockNumber) : '', blockNumber: tx.blockNumber },
+    ...extra,
+  });
+  const expiry = intent.expiry ?? 0;
+  const now = Math.floor(Date.now() / 1000);
+  const timing = { expiry, expiresInSec: expiry - now };
+  const verdictView = (v: Verdict) => ({ approved: v.approved, ...(v.reason ? { reason: v.reason } : {}), allocations: v.allocations, trace: v.trace });
+  const racy = (err: unknown): boolean => {
+    const name = (err as { revert?: { name?: string } }).revert?.name;
+    return name === 'IntentNotPending' || name === 'NoProposal' || name === 'AlreadyProposed' || /nonce|replacement|already known|underpriced/i.test(err instanceof Error ? err.message : '');
+  };
+
+  // 1. Already settled?
+  const done = await findSettlement(chain, nonce, intent.blockNumber);
+  if (done) {
+    const extra: Record<string, unknown> = {};
+    const rawDone = await readResult(ref);
+    if (rawDone) extra['verdict'] = verdictView(parseVerdict(rawDone, nonce, ref));
+    if (glHash) extra['genlayer'] = glInfo(glHash, await txState(glHash));
+    return json(out(done.kind, done, extra));
+  }
+
+  // 2. Past its deadline: nobody can settle it any more; refund the depositor in full.
+  if (expiry > 0 && now > expiry + 5) {
+    try {
+      const res = await refundExpiredV2(chain, intent, SETTLE_WAIT_MS);
+      return json(out(res.blockNumber ? 'expired' : 'settling', res));
+    } catch (err) {
+      if (racy(err) || (err as { revert?: { name?: string } }).revert?.name === 'NotExpired') {
+        const after = await findSettlement(chain, nonce, intent.blockNumber);
+        if (after) return json(out(after.kind, after));
+      }
+      throw err;
+    }
+  }
+
+  // 3. A route was proposed and is waiting out the safety delay.
+  const proposal = await findProposal(chain, nonce, intent.blockNumber);
+  const raw0 = await readResult(ref);
+  if (proposal) {
+    const verdict0 = raw0 ? parseVerdict(raw0, nonce, ref) : null;
+    const prop = { readyAt: proposal.readyAt, legsHash: proposal.legsHash, secondsLeft: Math.max(0, proposal.readyAt - now) };
+    if (!verdict0 || now < proposal.readyAt) {
+      return json({ ...base, phase: 'proposed', proposal: prop, ...(verdict0 ? { verdict: verdictView(verdict0) } : {}), ...timing });
+    }
+    try {
+      const res = await finalizeV2(chain, intent, verdict0.allocations, proposal, SETTLE_WAIT_MS, deadline);
+      return json(out(res.blockNumber ? 'executed' : 'settling', res, { verdict: verdictView(verdict0), ...(res.refund ? { refund: res.refund } : {}) }));
+    } catch (err) {
+      if (racy(err)) {
+        const after = await findSettlement(chain, nonce, intent.blockNumber);
+        if (after) return json(out(after.kind, after, { verdict: verdictView(verdict0) }));
+        return json({ ...base, phase: 'settling', verdict: verdictView(verdict0) });
+      }
+      throw err;
+    }
+  }
+
+  // 4. GenLayer adjudication.
+  const st: TxState | null = glHash ? await txState(glHash) : null;
+  if (st?.kind === 'pending') return json({ ...base, phase: 'adjudicating', glTx: glHash });
+  const raw = st?.kind === 'failed' ? null : raw0;
+  if (!raw) {
+    if (st?.kind === 'ok') return json({ ...base, phase: 'adjudicating', glTx: glHash });
+    const hash = await submitAdjudication(ref, intent.prompt, intent.amount);
+    return json({ ...base, phase: 'adjudicating', glTx: hash });
+  }
+
+  // 5. Verdict agreed: settle (or propose, with a settlement delay).
+  const verdict: Verdict = parseVerdict(raw, nonce, ref);
+  const genlayer = glHash && st?.kind === 'ok' ? glInfo(glHash, st) : undefined;
+  const verdictOut = verdictView(verdict);
+
+  // A locked route is a promise to the depositor: if the market moved and the verdict differs, do not settle.
+  // They can cancel at any time, or the intent refunds in full when it expires (no fee either way).
+  if (verdict.approved && isLocked(intent) && routeLockOf(verdict.allocations).toLowerCase() !== (intent.routeLock ?? '').toLowerCase()) {
+    return json({ ...base, phase: 'lock_mismatch', ...(glHash ? { glTx: glHash } : {}), ...(genlayer ? { genlayer } : {}), verdict: verdictOut, ...timing });
+  }
+
+  try {
+    const res = verdict.approved ? await executeV2(chain, intent, verdict.allocations, SETTLE_WAIT_MS, deadline) : await rejectV2(chain, intent, SETTLE_WAIT_MS, deadline);
+    const included = res.blockNumber > 0;
+    const proposed = 'proposed' in res && res.proposed === true;
+    if (included && !proposed && notifyEnabled() && Date.now() < deadline - 4_000) {
+      const legs = verdict.allocations.map((a) => `${a.percentage}% -> ${a.target_pool.slice(0, 6)}...${a.target_pool.slice(-4)} (${a.eco_score})`).join(', ');
+      const votes = genlayer ? ` · ${genlayer.validatorsAgreed}/${genlayer.validatorsTotal} validators agreed` : '';
+      await notify(
+        verdict.approved
+          ? `✅ Katalyst intent #${nonce} executed on ${chain.name} · ${Number(intent.amount) / 1e18} native · ${legs}${votes} · ${explorerBlockUrl(chain, res.blockNumber)}`
+          : `↩️ Katalyst intent #${nonce} rejected and refunded on ${chain.name} · ${verdict.reason ?? 'no reason'}${votes} · ${explorerBlockUrl(chain, res.blockNumber)}`,
+      );
+    }
+    const phase = !included ? 'settling' : proposed ? 'proposed' : verdict.approved ? 'executed' : 'rejected';
+    return json({
+      ...base,
+      phase,
+      ...(glHash ? { glTx: glHash } : {}),
+      ...(genlayer ? { genlayer } : {}),
+      verdict: verdictOut,
+      ...(proposed ? { proposal: { legsHash: legsHashOf(verdict.allocations) } } : {}),
+      portaldot: { txHash: res.txHash, explorerUrl: included ? explorerBlockUrl(chain, res.blockNumber) : '', blockNumber: res.blockNumber },
+      ...(res.refund ? { refund: res.refund } : {}),
+      ...timing,
+    });
+  } catch (err) {
+    if (racy(err)) {
+      const after = await findSettlement(chain, nonce, intent.blockNumber);
+      if (after) return json(out(after.kind, after, { ...(genlayer ? { genlayer } : {}), verdict: verdictOut }));
       return json({ ...base, phase: 'settling', ...(glHash ? { glTx: glHash } : {}), verdict: verdictOut });
     }
     throw err;

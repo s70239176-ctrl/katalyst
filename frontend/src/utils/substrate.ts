@@ -20,6 +20,7 @@ import {
 import { encodeAddress } from '@polkadot/util-crypto';
 import { hexToU8a, u8aConcat } from '@polkadot/util';
 import { activeChain, blockUrl, chainId, rpcUrl, vaultAddress, vaultDeployBlock } from './chains';
+import { executedAmount, feeOf, isV2, settledEventNames, statusOfEvent, vaultAbi } from './vaultAbi';
 import {
   SS58_PREFIX,
   parsePot,
@@ -32,16 +33,6 @@ export { rpcUrl, vaultAddress, vaultDeployBlock };
 
 const LOG_CHUNK_BLOCKS = 1000;
 
-const VAULT_ABI = [
-  'function depositIntent(string prompt) payable returns (uint64 nonce)',
-  'function cancelIntent(uint64 nonce, uint256 amount, bytes32 promptHash)',
-  'function pending(uint64 nonce) view returns (bytes32)',
-  'event IntentDeposited(uint64 indexed nonce, address indexed user, uint256 amount, string prompt)',
-  'event IntentExecuted(uint64 indexed nonce, address indexed user, uint256 totalAmount)',
-  'event RouteLeg(uint64 indexed nonce, address indexed pool, uint8 pct, bytes8 eco, uint256 amount)',
-  'event IntentRejected(uint64 indexed nonce, address indexed user, uint256 refunded)',
-  'event IntentCancelled(uint64 indexed nonce, address indexed user, uint256 refunded)',
-] as const;
 
 const readProviders = new Map<string, JsonRpcProvider>();
 
@@ -178,7 +169,13 @@ export interface DepositReceipt {
   promptHash: string;
   txHash: string;
   blockNumber: number;
+  /** v2: what the vault committed to; needed to cancel or refund. */
+  user: string;
+  routeLock: string;
+  expiry: number;
 }
+
+const NO_LOCK = '0x' + '00'.repeat(32);
 
 function parseVaultLog(contract: Contract, log: Log | EventLog) {
   try {
@@ -196,6 +193,7 @@ export async function depositIntent(
   contractAddress: string,
   promptText: string,
   potAmount: string,
+  routeLock: string = NO_LOCK,
 ): Promise<DepositReceipt> {
   if (!contractAddress) throw new Error('VITE_VAULT_ADDRESS is not configured');
   const value = parsePot(potAmount);
@@ -204,11 +202,12 @@ export async function depositIntent(
   if (prompt.length === 0) throw new Error('Describe your intent first');
 
   const signer = await new BrowserProvider(injected()).getSigner();
-  const vault = new Contract(getAddress(contractAddress), VAULT_ABI, signer);
+  const vault = new Contract(getAddress(contractAddress), vaultAbi(), signer);
   const fn = vault.getFunction('depositIntent');
+  const args: unknown[] = isV2() ? [prompt, routeLock] : [prompt];
 
-  await fn.staticCall(prompt, { value }); // surfaces vault errors before the wallet prompt
-  const tx = await fn(prompt, { value });
+  await fn.staticCall(...args, { value }); // surfaces vault errors before the wallet prompt
+  const tx = await fn(...args, { value });
   const receipt = await tx.wait();
   if (!receipt || receipt.status !== 1) throw new Error('Deposit transaction failed');
 
@@ -221,6 +220,9 @@ export async function depositIntent(
         promptHash: keccak256(toUtf8Bytes(prompt)),
         txHash: receipt.hash,
         blockNumber: receipt.blockNumber,
+        user: getAddress(String(parsed.args['user'])),
+        routeLock: isV2() ? String(parsed.args['routeLock']) : NO_LOCK,
+        expiry: isV2() ? Number(parsed.args['expiry']) : 0,
       };
     }
   }
@@ -230,10 +232,13 @@ export async function depositIntent(
 /** Depositor escape hatch while the relayer has not settled the intent yet. */
 export async function cancelIntent(contractAddress: string, deposit: DepositReceipt): Promise<string> {
   const signer = await new BrowserProvider(injected()).getSigner();
-  const vault = new Contract(getAddress(contractAddress), VAULT_ABI, signer);
+  const vault = new Contract(getAddress(contractAddress), vaultAbi(), signer);
   const fn = vault.getFunction('cancelIntent');
-  await fn.staticCall(deposit.nonce, deposit.amount, deposit.promptHash);
-  const tx = await fn(deposit.nonce, deposit.amount, deposit.promptHash);
+  const args: unknown[] = isV2()
+    ? [{ nonce: deposit.nonce, user: deposit.user, amount: deposit.amount, promptHash: deposit.promptHash, routeLock: deposit.routeLock, expiry: deposit.expiry }]
+    : [deposit.nonce, deposit.amount, deposit.promptHash];
+  await fn.staticCall(...args);
+  const tx = await fn(...args);
   const receipt = await tx.wait();
   if (!receipt || receipt.status !== 1) throw new Error('Cancel transaction failed');
   return receipt.hash;
@@ -265,7 +270,7 @@ export async function fetchOutcome(
 ): Promise<IntentOutcome | null> {
   const provider = getReadProvider();
   const address = getAddress(contractAddress);
-  const vault = new Contract(address, VAULT_ABI, provider);
+  const vault = new Contract(address, vaultAbi(), provider);
   const topicOf = (name: string): string => vault.interface.getEvent(name)!.topicHash;
   const nonceTopic = zeroPadValue(toBeHex(nonce), 32);
   const latest = await provider.getBlockNumber();
@@ -273,7 +278,7 @@ export async function fetchOutcome(
   const settled = await logsBetween(
     provider,
     address,
-    [[topicOf('IntentExecuted'), topicOf('IntentRejected'), topicOf('IntentCancelled')], nonceTopic],
+    [settledEventNames().map(topicOf), nonceTopic],
     fromBlock,
     latest,
   );
@@ -297,15 +302,17 @@ export async function fetchOutcome(
     return {
       status: 'Executed',
       route,
-      totalAmount: parsed.args['totalAmount'] as bigint,
+      totalAmount: executedAmount(parsed.args),
+      ...(feeOf(parsed.args) !== undefined ? { fee: feeOf(parsed.args)! } : {}),
       txHash: log.transactionHash,
       blockNumber: log.blockNumber,
     };
   }
 
   return {
-    status: parsed.name === 'IntentRejected' ? 'Rejected' : 'Cancelled',
+    status: statusOfEvent(parsed.name),
     route: null,
+    ...(feeOf(parsed.args) !== undefined ? { fee: feeOf(parsed.args)! } : {}),
     totalAmount: (parsed.args['refunded'] as bigint) ?? 0n,
     txHash: log.transactionHash,
     blockNumber: log.blockNumber,

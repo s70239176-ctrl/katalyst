@@ -23,6 +23,27 @@ const ABI = [
   'event IntentCancelled(uint64 indexed nonce, address indexed user, uint256 refunded)',
 ] as const;
 
+const V2_ABI = [
+  'function executeAdjudicatedIntent((uint64 nonce, address user, uint256 amount, bytes32 promptHash, bytes32 routeLock, uint64 expiry) i, (address pool, uint8 pct, bytes8 eco)[] legs)',
+  'function finalizeSettlement((uint64 nonce, address user, uint256 amount, bytes32 promptHash, bytes32 routeLock, uint64 expiry) i, (address pool, uint8 pct, bytes8 eco)[] legs, uint64 readyAt)',
+  'function rejectIntent((uint64 nonce, address user, uint256 amount, bytes32 promptHash, bytes32 routeLock, uint64 expiry) i)',
+  'function refundExpired((uint64 nonce, address user, uint256 amount, bytes32 promptHash, bytes32 routeLock, uint64 expiry) i)',
+  'function pending(uint64 nonce) view returns (bytes32)',
+  'function proposed(uint64 nonce) view returns (bytes32)',
+  'function relayer() view returns (address)',
+  'function feeWei() view returns (uint256)',
+  'function delay() view returns (uint64)',
+  'function paused() view returns (bool)',
+  'function intentCount() view returns (uint64)',
+  'event IntentDeposited(uint64 indexed nonce, address indexed user, uint256 amount, string prompt, bytes32 routeLock, uint64 expiry)',
+  'event IntentExecuted(uint64 indexed nonce, address indexed user, uint256 netAmount, uint256 fee)',
+  'event IntentRejected(uint64 indexed nonce, address indexed user, uint256 refunded, uint256 fee)',
+  'event IntentCancelled(uint64 indexed nonce, address indexed user, uint256 refunded)',
+  'event IntentExpired(uint64 indexed nonce, address indexed user, uint256 refunded, address indexed caller)',
+  'event SettlementProposed(uint64 indexed nonce, bytes32 legsHash, uint64 readyAt)',
+  'event SettlementVetoed(uint64 indexed nonce, address indexed user, uint256 refunded)',
+] as const;
+
 const LOG_CHUNK = 1000;
 /** pallet-revive tracks native balances at 10^-14 POT. */
 const GRANULARITY = 10_000n;
@@ -36,10 +57,13 @@ export interface Intent {
   amount: bigint;
   prompt: string;
   blockNumber: number;
+  /** v2: the commitment fields the vault was given at deposit time. */
+  routeLock?: string;
+  expiry?: number;
 }
 
 export interface Settlement {
-  kind: 'executed' | 'rejected' | 'cancelled';
+  kind: 'executed' | 'rejected' | 'cancelled' | 'expired' | 'vetoed';
   txHash: string;
   blockNumber: number;
 }
@@ -51,12 +75,12 @@ export interface VerdictLeg {
 }
 
 export function vault(chain: ChainCfg, runner?: ContractRunner): Contract {
-  return new Contract(getAddress(chain.vault), ABI, runner ?? getProvider(chain));
+  return new Contract(getAddress(chain.vault), chain.version === 2 ? V2_ABI : ABI, runner ?? getProvider(chain));
 }
 
 const nonceTopic = (n: number): string => zeroPadValue(toBeHex(n), 32);
 
-async function logs(chain: ChainCfg, topics: (string | string[])[], from: number, to: number): Promise<Log[]> {
+export async function logs(chain: ChainCfg, topics: (string | string[])[], from: number, to: number): Promise<Log[]> {
   const p = getProvider(chain);
   const address = getAddress(chain.vault);
   const out: Log[] = [];
@@ -82,6 +106,7 @@ export async function loadIntent(chain: ChainCfg, nonce: number, hintBlock?: num
           amount: parsed.args['amount'] as bigint,
           prompt: String(parsed.args['prompt']),
           blockNumber: log.blockNumber,
+          ...(chain.version === 2 ? { routeLock: String(parsed.args['routeLock']), expiry: Number(parsed.args['expiry']) } : {}),
         };
       }
     }
@@ -105,6 +130,12 @@ export async function findSettlement(chain: ChainCfg, nonce: number, fromBlock: 
     ['executed', v.interface.getEvent('IntentExecuted')!.topicHash],
     ['rejected', v.interface.getEvent('IntentRejected')!.topicHash],
     ['cancelled', v.interface.getEvent('IntentCancelled')!.topicHash],
+    ...(chain.version === 2
+      ? ([
+          ['expired', v.interface.getEvent('IntentExpired')!.topicHash],
+          ['vetoed', v.interface.getEvent('SettlementVetoed')!.topicHash],
+        ] as Array<[Settlement['kind'], string]>)
+      : []),
   ];
   const head = await retry(() => getProvider(chain).getBlockNumber());
   const found = await logs(chain, [kinds.map(([, t]) => t), nonceTopic(nonce)], fromBlock, head);
@@ -114,13 +145,15 @@ export async function findSettlement(chain: ChainCfg, nonce: number, fromBlock: 
   return kind ? { kind, txHash: log.transactionHash, blockNumber: log.blockNumber } : null;
 }
 
-const promptHashOf = (prompt: string): string => keccak256(toUtf8Bytes(prompt));
+export const promptHashOf = (prompt: string): string => keccak256(toUtf8Bytes(prompt));
 
-function encodeEco(label: string): string {
+export function encodeEco(label: string): string {
   const bytes = toUtf8Bytes(label);
   if (bytes.length === 0 || bytes.length > 8) throw new Error(`eco score "${label}" does not fit bytes8`);
   return zeroPadBytes(bytes, 8);
 }
+
+export { GRANULARITY, MAX_REFUND_RETURN, REFUND_MIN_BUDGET_MS };
 
 export interface SettleResult {
   txHash: string;
@@ -173,7 +206,7 @@ export async function settle(chain: ChainCfg, intent: Intent, approved: boolean,
  * the depositor paid it. With no daemon to track balances, measure it from the settlement block:
  * refund = balance(B) - balance(B-1) + fee, valid only if the relayer sent exactly one tx in block B.
  */
-async function forwardStorageRefund(chain: ChainCfg, user: string, blockNumber: number, feeWei: bigint, waitMs: number): Promise<{ amount: string; txHash: string } | null> {
+export async function forwardStorageRefund(chain: ChainCfg, user: string, blockNumber: number, feeWei: bigint, waitMs: number, deduct = 0n): Promise<{ amount: string; txHash: string } | null> {
   const p = getProvider(chain);
   const w = getRelayerWallet(chain);
   const block = (await p.send('eth_getBlockByNumber', [toBeHex(blockNumber), true])) as { transactions: Array<{ from: string }> };
@@ -181,7 +214,7 @@ async function forwardStorageRefund(chain: ChainCfg, user: string, blockNumber: 
   if (mine !== 1) return null; // ambiguous: another relayer tx shares the block
 
   const bal = async (n: number): Promise<bigint> => BigInt((await p.send('eth_getBalance', [w.address, toBeHex(n)])) as string);
-  let refund = (await bal(blockNumber)) - (await bal(blockNumber - 1)) + feeWei;
+  let refund = (await bal(blockNumber)) - (await bal(blockNumber - 1)) + feeWei - deduct;
   if (refund <= 0n) return null;
   if (refund > MAX_REFUND_RETURN) refund = MAX_REFUND_RETURN;
   refund -= refund % GRANULARITY;

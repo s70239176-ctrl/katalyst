@@ -7,7 +7,7 @@ export const SS58_PREFIX = 42;
 // Chain-dependent values (chain id, token symbol, ...) live in ./chains. This module stays free of browser/Vite
 // dependencies so the SDK and CLI can use it from Node.
 
-export type IntentStatus = 'Pending' | 'Executed' | 'Rejected' | 'Cancelled';
+export type IntentStatus = 'Pending' | 'Executed' | 'Rejected' | 'Cancelled' | 'Expired' | 'Vetoed';
 
 export interface RouteAllocation {
   targetPool: string;
@@ -21,7 +21,10 @@ export interface RouteAllocation {
 export interface IntentOutcome {
   status: Exclude<IntentStatus, 'Pending'>;
   route: RouteAllocation[] | null;
+  /** Executed: routed to pools (net of the fee in v2). Otherwise: refunded. */
   totalAmount: bigint;
+  /** v2: protocol fee paid to the relayer (executed / rejected). */
+  fee?: bigint;
   txHash: string;
   blockNumber: number;
 }
@@ -36,7 +39,7 @@ export interface WalletState {
 export type NetworkStatus = 'connecting' | 'online' | 'offline';
 
 /** Lifecycle of the intent currently being tracked in the UI. */
-export type FlowStage = 'idle' | 'depositing' | 'adjudicating' | 'settling' | 'executed' | 'rejected' | 'error';
+export type FlowStage = 'idle' | 'depositing' | 'adjudicating' | 'proposed' | 'settling' | 'executed' | 'rejected' | 'error';
 
 // ---- Verdict (solver output / relayer API) ----------------------------------------
 
@@ -75,7 +78,7 @@ export interface VerdictPayload {
   trace: VerdictTrace | null;
 }
 
-export type IntentPhase = 'adjudicating' | 'settling' | 'executed' | 'rejected' | 'failed';
+export type IntentPhase = 'adjudicating' | 'proposed' | 'lock_mismatch' | 'settling' | 'executed' | 'rejected' | 'expired' | 'vetoed' | 'failed';
 
 export interface ChainRef {
   txHash: string;
@@ -97,6 +100,10 @@ export interface VerdictRecord {
   verdict?: { approved: boolean; reason?: string; allocations: VerdictLeg[]; trace: VerdictTrace | null };
   portaldot?: ChainRef;
   refund?: { amount: string; txHash: string };
+  /** v2: a route the relayer proposed that is waiting out the settlement delay. */
+  proposal?: { readyAt?: number; secondsLeft?: number; legsHash?: string };
+  /** v2: unix seconds after which anyone can refund the intent. */
+  expiry?: number;
 }
 
 export interface RelayerHealth {

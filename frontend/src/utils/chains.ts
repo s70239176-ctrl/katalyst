@@ -15,6 +15,10 @@ export interface ChainEntry {
   chainId: number;
   rpcUrl: string;
   vault: string;
+  /** Contract generation: 1 = KatalystVault, 2 = KatalystVaultV2 + PoolHub (refunds, fee, route lock, delay + veto). */
+  version: 1 | 2;
+  /** v2: the PoolHub holding users' pool positions. */
+  hub: string;
   /** Block the vault was deployed in (bounds log scans). */
   deployBlock: number;
   /** Block URL template with a `{block}` placeholder; empty when the chain has no explorer. */
@@ -49,6 +53,8 @@ function fromEnv(): ChainEntry[] {
             chainId: Number(c['chainId']),
             rpcUrl: String(c['rpcUrl']),
             vault: String(c['vault'] ?? ''),
+            version: Number(c['version'] ?? 1) === 2 ? 2 : 1,
+            hub: String(c['hub'] ?? ''),
             deployBlock: Number(c['deployBlock'] ?? 0),
             explorerBlockUrl: String(c['explorerBlockUrl'] ?? ''),
             symbol: String(c['symbol'] ?? 'ETH'),
@@ -71,6 +77,8 @@ function fromEnv(): ChainEntry[] {
       chainId: 420420777,
       rpcUrl: import.meta.env.VITE_PORTALDOT_EVM_RPC ?? 'https://test-evm-rpc-v3.portaldot.dev',
       vault: import.meta.env.VITE_VAULT_ADDRESS ?? '',
+      version: 1,
+      hub: '',
       deployBlock: Number(import.meta.env.VITE_VAULT_DEPLOY_BLOCK ?? 0),
       explorerBlockUrl: PORTALDOT_EXPLORER,
       symbol: 'tPOT',

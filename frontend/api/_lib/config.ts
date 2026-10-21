@@ -46,6 +46,8 @@ export interface ChainCfg {
   chainId: number;
   rpcUrl: string;
   vault: string;
+  /** Contract generation: 1 = KatalystVault, 2 = KatalystVaultV2 + PoolHub. */
+  version: 1 | 2;
   deployBlock: number;
   /** Template with a `{block}` placeholder. */
   explorerBlockUrl: string;
@@ -75,6 +77,7 @@ export function chains(): ChainCfg[] {
         chainId: Number(c['chainId']),
         rpcUrl: String(c['rpcUrl']),
         vault: String(c['vault']),
+        version: Number(c['version'] ?? 1) === 2 ? 2 : 1,
         deployBlock: Number(c['deployBlock'] ?? 0),
         explorerBlockUrl: String(c['explorerBlockUrl'] ?? ''),
         relayerKeyEnv: String(c['relayerKeyEnv'] ?? 'RELAYER_PRIVATE_KEY'),
@@ -88,6 +91,7 @@ export function chains(): ChainCfg[] {
         chainId: Number(process.env['PORTALDOT_CHAIN_ID'] ?? 420420777),
         rpcUrl: optionalEnv('PORTALDOT_EVM_RPC', 'VITE_PORTALDOT_EVM_RPC') ?? 'https://test-evm-rpc-v3.portaldot.dev',
         vault: env('VAULT_CONTRACT_ADDRESS', 'VITE_VAULT_ADDRESS'),
+        version: 1,
         deployBlock: Number(optionalEnv('VAULT_DEPLOY_BLOCK', 'VITE_VAULT_DEPLOY_BLOCK') ?? 0),
         explorerBlockUrl: PORTALDOT_EXPLORER,
         relayerKeyEnv: 'RELAYER_PRIVATE_KEY',

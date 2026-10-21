@@ -5,19 +5,12 @@
 import { Contract, getAddress, toBeHex, toUtf8String, zeroPadValue, type Log } from 'ethers';
 import { vaultAddress, vaultDeployBlock, getReadProvider } from './substrate';
 import type { IntentOutcome, NetworkStats, RouteAllocation, UserIntent } from './types';
+import { executedAmount, feeOf, isV2, settledEventNames, statusOfEvent, vaultAbi } from './vaultAbi';
 
 const LOG_CHUNK_BLOCKS = 1000;
 
-const ABI = [
-  'event IntentDeposited(uint64 indexed nonce, address indexed user, uint256 amount, string prompt)',
-  'event IntentExecuted(uint64 indexed nonce, address indexed user, uint256 totalAmount)',
-  'event RouteLeg(uint64 indexed nonce, address indexed pool, uint8 pct, bytes8 eco, uint256 amount)',
-  'event IntentRejected(uint64 indexed nonce, address indexed user, uint256 refunded)',
-  'event IntentCancelled(uint64 indexed nonce, address indexed user, uint256 refunded)',
-] as const;
-
 function vault(): Contract {
-  return new Contract(getAddress(vaultAddress()), ABI, getReadProvider());
+  return new Contract(getAddress(vaultAddress()), vaultAbi(), getReadProvider());
 }
 
 const topic = (c: Contract, name: string): string => c.interface.getEvent(name)!.topicHash;
@@ -61,7 +54,7 @@ export async function fetchUserIntents(user: string): Promise<UserIntent[]> {
 
   const [deposits, settled, legs] = await Promise.all([
     scan([topic(c, 'IntentDeposited'), null, userTopic]),
-    scan([[topic(c, 'IntentExecuted'), topic(c, 'IntentRejected'), topic(c, 'IntentCancelled')], null, userTopic]),
+    scan([settledEventNames().map((n) => topic(c, n)), null, userTopic]),
     scan([topic(c, 'RouteLeg')]),
   ]);
 
@@ -77,14 +70,16 @@ export async function fetchUserIntents(user: string): Promise<UserIntent[]> {
       outcomes.set(nonce, {
         status: 'Executed',
         route: routeFrom(c, legsByTx.get(log.transactionHash) ?? []).filter(() => true),
-        totalAmount: parsed.args['totalAmount'] as bigint,
+        totalAmount: executedAmount(parsed.args),
+        ...(feeOf(parsed.args) !== undefined ? { fee: feeOf(parsed.args)! } : {}),
         txHash: log.transactionHash,
         blockNumber: log.blockNumber,
       });
     } else {
       outcomes.set(nonce, {
-        status: parsed.name === 'IntentRejected' ? 'Rejected' : 'Cancelled',
+        status: statusOfEvent(parsed.name),
         route: null,
+        ...(feeOf(parsed.args) !== undefined ? { fee: feeOf(parsed.args)! } : {}),
         totalAmount: parsed.args['refunded'] as bigint,
         txHash: log.transactionHash,
         blockNumber: log.blockNumber,
@@ -120,7 +115,8 @@ export async function fetchNetworkStats(): Promise<NetworkStats> {
     scan([topic(c, 'IntentDeposited')]),
     scan([topic(c, 'IntentExecuted')]),
     scan([topic(c, 'IntentRejected')]),
-    scan([topic(c, 'IntentCancelled')]),
+    // Refunded without routing: cancelled by the depositor, refunded after the timeout, or vetoed (v2).
+    scan([(isV2() ? ['IntentCancelled', 'IntentExpired', 'SettlementVetoed'] : ['IntentCancelled']).map((n) => topic(c, n))]),
   ]);
 
   const users = new Set<string>();
