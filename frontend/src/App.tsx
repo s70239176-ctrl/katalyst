@@ -4,6 +4,8 @@ import { GreyboxModal } from './components/GreyboxModal';
 import { Header, type Page } from './components/Header';
 import { IntentTerminal, EXAMPLES, type PreviewState } from './components/IntentTerminal';
 import { NetworkPage } from './components/NetworkPage';
+import { ReceiptPage } from './components/ReceiptPage';
+import { VerifyPage } from './components/VerifyPage';
 import { RouteVisualizer } from './components/RouteVisualizer';
 import { SecurityLab } from './components/SecurityLab';
 import { Stepper, type Step } from './components/Stepper';
@@ -42,11 +44,19 @@ import {
 
 const MAX_POLLS = 150;
 
-const PAGES: readonly Page[] = ['intent', 'activity', 'network', 'security'];
+const PAGES: readonly Page[] = ['intent', 'activity', 'network', 'verify', 'security', 'receipt'];
 
-function pageFromHash(): Page {
-  const h = window.location.hash.replace(/^#\/?/, '');
-  return (PAGES as readonly string[]).includes(h) ? (h as Page) : 'intent';
+interface Route {
+  page: Page;
+  /** Optional intent number, as in #/verify/8 or #/receipt/8. */
+  nonce: number | null;
+}
+
+function routeFromHash(): Route {
+  const [p, arg] = window.location.hash.replace(/^#\/?/, '').split('/');
+  const page = (PAGES as readonly string[]).includes(p ?? '') ? (p as Page) : 'intent';
+  const n = Number(arg);
+  return { page, nonce: Number.isSafeInteger(n) && n > 0 ? n : null };
 }
 
 function errorText(err: unknown, fallback: string): string {
@@ -55,7 +65,8 @@ function errorText(err: unknown, fallback: string): string {
 }
 
 export default function App() {
-  const [page, setPage] = useState<Page>(pageFromHash);
+  const [route, setRoute] = useState<Route>(routeFromHash);
+  const page = route.page;
   const [network, setNetwork] = useState<NetworkStatus>('connecting');
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [walletChain, setWalletChain] = useState<number | null>(null);
@@ -80,12 +91,12 @@ export default function App() {
 
   // ---- routing ------------------------------------------------------------------
   useEffect(() => {
-    const onHash = () => setPage(pageFromHash());
+    const onHash = () => setRoute(routeFromHash());
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
-  const navigate = useCallback((p: Page) => {
-    window.location.hash = `/${p}`;
+  const navigate = useCallback((p: Page, nonce?: number) => {
+    window.location.hash = `/${p}${nonce ? `/${nonce}` : ''}`;
   }, []);
 
   // ---- network + wallet ---------------------------------------------------------
@@ -309,7 +320,7 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <Header page={page} onNavigate={navigate} wallet={wallet} balance={balance} network={network} connecting={connecting} onConnect={() => void handleConnect()} />
+      <Header page={page} onNavigate={(p) => navigate(p)} wallet={wallet} balance={balance} network={network} connecting={connecting} onConnect={() => void handleConnect()} />
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
         {wrongNetwork && (
@@ -427,6 +438,8 @@ export default function App() {
 
         {page === 'activity' && <ActivityPage wallet={wallet} onConnect={() => void handleConnect()} onOpen={(intent, rec) => setReceipt({ intent, record: rec })} refreshKey={refreshKey} />}
         {page === 'network' && <NetworkPage refreshKey={refreshKey} />}
+        {page === 'verify' && <VerifyPage initialNonce={route.nonce} onNavigate={(p, n) => navigate(p, n)} />}
+        {page === 'receipt' && <ReceiptPage nonce={route.nonce} onNavigate={(p, n) => navigate(p, n)} />}
         {page === 'security' && (
           <SecurityLab
             onUsePrompt={(p) => {
@@ -444,7 +457,15 @@ export default function App() {
         </div>
       </footer>
 
-      <GreyboxModal intent={receipt?.intent ?? null} record={receipt?.record ?? null} onClose={() => setReceipt(null)} />
+      <GreyboxModal
+        intent={receipt?.intent ?? null}
+        record={receipt?.record ?? null}
+        onClose={() => setReceipt(null)}
+        onNavigate={(p, n) => {
+          setReceipt(null);
+          navigate(p, n);
+        }}
+      />
     </div>
   );
 }

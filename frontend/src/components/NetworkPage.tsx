@@ -5,6 +5,7 @@ import { fetchNetworkStats } from '../utils/history';
 import { VAULT_ADDRESS, explorerBlockUrl } from '../utils/substrate';
 import { POOL_LABELS, TOKEN_SYMBOL, formatPot, timeAgo, type NetworkStats, type RelayerHealth } from '../utils/types';
 import { Badge, CopyButton, ExternalLink, Skeleton, Stat } from './ui';
+import { ValidatorsCard } from './ValidatorsCard';
 
 export function NetworkPage({ refreshKey }: { refreshKey: number }) {
   const [stats, setStats] = useState<NetworkStats | null>(null);
@@ -114,6 +115,8 @@ export function NetworkPage({ refreshKey }: { refreshKey: number }) {
           )}
         </section>
       </div>
+
+      <ValidatorsCard refreshKey={refreshKey} />
 
       <section className="card" aria-labelledby="pools-title">
         <div className="border-b border-line px-5 py-4">

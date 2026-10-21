@@ -1,4 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import type { Adjudication } from '../sdk';
+import { GENLAYER_CONTRACT, GENLAYER_EXPLORER } from '../utils/genlayer';
+import { getKatalyst } from '../utils/katalyst';
 import { explorerBlockUrl } from '../utils/substrate';
 import { TOKEN_SYMBOL, formatPot, shortAddress, shortHash, type UserIntent, type VerdictRecord } from '../utils/types';
 import { VerdictCard } from './VerdictCard';
@@ -9,10 +12,28 @@ interface GreyboxModalProps {
   /** Relayer-side record (validator votes, decision trace, GenLayer link) when available. */
   record: VerdictRecord | null;
   onClose: () => void;
+  /** Navigate to the verify or receipt page for this intent. */
+  onNavigate?: (page: 'verify' | 'receipt', nonce: number) => void;
 }
 
 /** Full receipt for one intent: consensus, guardrail result, route and every transaction link. */
-export function GreyboxModal({ intent, record, onClose }: GreyboxModalProps) {
+export function GreyboxModal({ intent, record, onClose, onNavigate }: GreyboxModalProps) {
+  // Without a relayer record (e.g. serverless history), read the validators' votes from GenLayer itself.
+  const [adj, setAdj] = useState<Adjudication | null>(null);
+  const nonce = intent?.nonce ?? null;
+  useEffect(() => {
+    setAdj(null);
+    if (nonce === null || record?.genlayer || !GENLAYER_CONTRACT) return;
+    let cancelled = false;
+    getKatalyst()
+      .genlayer?.findAdjudication(nonce)
+      .then((a) => !cancelled && setAdj(a))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [nonce, record?.genlayer]);
+
   useEffect(() => {
     if (!intent) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -22,7 +43,9 @@ export function GreyboxModal({ intent, record, onClose }: GreyboxModalProps) {
 
   if (!intent) return null;
 
-  const gl = record?.genlayer;
+  const gl =
+    record?.genlayer ??
+    (adj ? { txHash: adj.hash, explorerUrl: `${GENLAYER_EXPLORER}/tx/${adj.hash}`, validatorsAgreed: adj.agreed, validatorsTotal: adj.total, votes: adj.votes } : undefined);
   const verdict = record?.verdict;
   const threats = verdict?.trace?.screen.startsWith('blocked') ? 1 : 0;
   const outcome = intent.outcome;
@@ -126,6 +149,17 @@ export function GreyboxModal({ intent, record, onClose }: GreyboxModalProps) {
             )}
           </dl>
         </section>
+
+        {onNavigate && outcome && (
+          <div className="mt-6 flex flex-wrap gap-2 border-t border-line pt-4">
+            <button type="button" className="btn btn-sm" onClick={() => onNavigate('verify', intent.nonce)}>
+              Verify independently
+            </button>
+            <button type="button" className="btn btn-sm" onClick={() => onNavigate('receipt', intent.nonce)}>
+              Share receipt
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

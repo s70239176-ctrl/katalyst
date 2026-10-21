@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { formatPot, shortAddress, TOKEN_SYMBOL, type NetworkStatus, type WalletState } from '../utils/types';
 import { CopyButton } from './ui';
 
-export type Page = 'intent' | 'activity' | 'network' | 'security';
+export type Page = 'intent' | 'activity' | 'network' | 'verify' | 'security' | 'receipt';
 
 const NAV: ReadonlyArray<{ id: Page; label: string }> = [
   { id: 'intent', label: 'Intent' },
   { id: 'activity', label: 'Activity' },
   { id: 'network', label: 'Network' },
+  { id: 'verify', label: 'Verify' },
   { id: 'security', label: 'Security lab' },
 ];
 

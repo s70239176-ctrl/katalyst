@@ -8,7 +8,7 @@ export const GENLAYER_EXPLORER = 'https://explorer-studio.genlayer.com';
 const KEY_STORAGE = 'katalyst.genlayer.previewKey';
 
 /** A throwaway key is enough: simulations are free and Studionet is gasless. */
-function previewKey(): `0x${string}` {
+export function previewKey(): `0x${string}` {
   try {
     const saved = localStorage.getItem(KEY_STORAGE);
     if (saved && /^0x[0-9a-fA-F]{64}$/.test(saved)) return saved as `0x${string}`;
