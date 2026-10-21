@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = ["contracts/vault"]
+exclude = ["genlayer"]
+
+[profile.release]
+overflow-checks = true
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"

@@ -1,0 +1,10 @@
+# The GenLayer solver is a Python Intelligent Contract (intelligent_vault_solver.py).
+# This manifest only declares an isolated, empty Cargo workspace so that the root
+# Rust workspace (which `exclude`s this directory) never tries to build it, and
+# records deployment metadata for tooling.
+[workspace]
+
+[workspace.metadata.genlayer]
+contract = "intelligent_vault_solver.py"
+runtime = "genvm-python-3.11"
+class = "IntelligentVaultSolver"

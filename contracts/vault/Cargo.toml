@@ -1,0 +1,23 @@
+[package]
+name = "katalyst_vault"
+version = "0.1.0"
+authors = ["Katalyst Protocol Team"]
+edition = "2021"
+
+[dependencies]
+ink = { version = "4.3.0", default-features = false }
+scale = { package = "parity-scale-codec", version = "3.6.9", default-features = false, features = ["derive"] }
+scale-info = { version = "2.10.0", default-features = false, features = ["derive"], optional = true }
+
+[lib]
+path = "lib.rs"
+# No explicit crate-type: cargo-contract >= 5 builds the WASM as a bin target and rejects one.
+
+[features]
+default = ["std"]
+std = [
+    "ink/std",
+    "scale/std",
+    "scale-info/std",
+]
+ink-as-dependency = []

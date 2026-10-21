@@ -1,0 +1,10 @@
+node_modules/
+dist/
+target/
+.env
+__pycache__/
+*.log
+frontend/public/katalyst_vault.json
+contracts/evm/build/
+relayer/data/
+.claude/
