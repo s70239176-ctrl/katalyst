@@ -4,6 +4,7 @@ import { activeChain, chainId, tokenSymbol } from './utils/chains';
 import { GreyboxModal } from './components/GreyboxModal';
 import { Header, type Page } from './components/Header';
 import { IntentTerminal, EXAMPLES, type PreviewState } from './components/IntentTerminal';
+import { lazy, Suspense } from 'react';
 import { NetworkPage } from './components/NetworkPage';
 import { PositionsPage } from './components/PositionsPage';
 import type { VaultPolicy } from './sdk/vault';
@@ -38,7 +39,9 @@ import { formatPot, shortHash, type FlowStage, type IntentOutcome, type NetworkS
 
 const MAX_POLLS = 150;
 
-const PAGES: readonly Page[] = ['intent', 'activity', 'positions', 'network', 'verify', 'security', 'receipt'];
+const Landing = lazy(() => import('./components/landing/Landing'));
+
+const PAGES: readonly Page[] = ['protocol', 'intent', 'activity', 'positions', 'network', 'verify', 'security', 'receipt'];
 
 interface Route {
   page: Page;
@@ -48,7 +51,7 @@ interface Route {
 
 function routeFromHash(): Route {
   const [p, arg] = window.location.hash.replace(/^#\/?/, '').split('/');
-  const page = (PAGES as readonly string[]).includes(p ?? '') ? (p as Page) : 'intent';
+  const page = (PAGES as readonly string[]).includes(p ?? '') ? (p as Page) : 'protocol';
   const n = Number(arg);
   return { page, nonce: Number.isSafeInteger(n) && n > 0 ? n : null };
 }
@@ -381,6 +384,14 @@ export default function App() {
 
   const diagramRoute =
     deposit && shownVerdict?.status === 'APPROVED' ? shownVerdict.allocations : !deposit && previewVerdict?.status === 'APPROVED' ? previewVerdict.allocations : null;
+
+  if (page === 'protocol') {
+    return (
+      <Suspense fallback={<div style={{ background: '#05090c', minHeight: '100vh' }} />}>
+        <Landing onNavigate={(p, n) => navigate(p, n)} />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col">

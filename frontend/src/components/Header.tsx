@@ -3,7 +3,7 @@ import { formatPot, shortAddress, type NetworkStatus, type WalletState } from '.
 import { CHAINS, activeChain, setActiveChain, tokenSymbol } from '../utils/chains';
 import { CopyButton } from './ui';
 
-export type Page = 'intent' | 'activity' | 'positions' | 'network' | 'verify' | 'security' | 'receipt';
+export type Page = 'protocol' | 'intent' | 'activity' | 'positions' | 'network' | 'verify' | 'security' | 'receipt';
 
 const NAV: ReadonlyArray<{ id: Page; label: string }> = [
   { id: 'intent', label: 'Intent' },
@@ -47,7 +47,7 @@ export function Header({ page, onNavigate, wallet, balance, network, connecting,
     <header className="sticky top-0 z-30 border-b border-line bg-bg/85 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-4">
         <div className="flex items-center gap-8">
-          <button type="button" onClick={() => onNavigate('intent')} className="flex items-center gap-2.5" aria-label="Katalyst home">
+          <button type="button" onClick={() => onNavigate('protocol')} className="flex items-center gap-2.5" aria-label="Katalyst home">
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-sm font-bold text-[var(--accent-ink)]" aria-hidden="true">
               K
             </span>
