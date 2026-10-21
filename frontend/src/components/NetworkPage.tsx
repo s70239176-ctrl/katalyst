@@ -65,15 +65,19 @@ export function NetworkPage({ refreshKey }: { refreshKey: number }) {
             <h2 id="relayer-title" className="text-base font-semibold">
               Relayer
             </h2>
-            {health === undefined ? <Skeleton className="h-6 w-16" /> : <Badge tone={health ? 'ok' : 'bad'}>{health ? 'Online' : 'Offline'}</Badge>}
+            {health === undefined ? <Skeleton className="h-6 w-16" /> : <Badge tone={health && health.ok ? 'ok' : 'bad'}>{health ? (health.ok ? 'Online' : 'Misconfigured') : 'Offline'}</Badge>}
           </div>
           {health ? (
             <dl className="mt-4 space-y-2 text-sm">
               <Line label="Account" value={<span className="mono">{health.relayer}</span>} />
               <Line label="Gas balance" value={`${Number(health.relayerBalance).toFixed(2)} ${TOKEN_SYMBOL}`} />
-              <Line label="Queue" value={`${health.queueLength} in flight`} />
-              <Line label="Uptime" value={`${Math.floor(health.uptimeSec / 60)} min`} />
-              <Line label="Last settlement" value={health.lastSettledAt ? timeAgo(health.lastSettledAt) : '—'} />
+              <Line label="Mode" value={health.mode === 'serverless' ? 'Serverless (Vercel Functions)' : 'Always-on relayer'} />
+              {health.queueLength !== undefined && <Line label="Queue" value={`${health.queueLength} in flight`} />}
+              {health.uptimeSec !== undefined && <Line label="Uptime" value={`${Math.floor(health.uptimeSec / 60)} min`} />}
+              {health.lastSettledAt !== undefined && <Line label="Last settlement" value={health.lastSettledAt ? timeAgo(health.lastSettledAt) : '—'} />}
+              {health.relayerMatchesVault === false && (
+                <Line label="Key check" value={<Badge tone="bad">Relayer key does not match the vault</Badge>} />
+              )}
             </dl>
           ) : (
             health === null && (

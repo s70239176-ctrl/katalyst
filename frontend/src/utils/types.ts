@@ -106,9 +106,14 @@ export interface RelayerHealth {
   vault: string;
   genlayer: { chain: string; contract: string };
   chainId: number;
-  uptimeSec: number;
-  queueLength: number;
-  lastSettledAt: number | null;
+  /** "serverless" (Vercel Functions) or "daemon" (always-on process). */
+  mode?: 'serverless' | 'daemon';
+  /** Serverless only: false when the configured relayer key is not the vault's relayer. */
+  relayerMatchesVault?: boolean;
+  /** Daemon only. */
+  uptimeSec?: number;
+  queueLength?: number;
+  lastSettledAt?: number | null;
 }
 
 export interface UserIntent {

@@ -25,7 +25,9 @@ Wallet ──depositIntent──▶ KatalystVault (Solidity, Portaldot / pallet-
 - **Defence in depth.** Static screen → constrained model → deterministic allocation code → on-chain re-validation.
   The Security lab in the UI fires injection attempts at the live solver and shows them contained.
 - **Trustless history and metrics.** Activity and Network pages are computed from vault events, not a database.
-- **Relayer as middleware.** A read-only HTTP API (`/health`, `/stats`, `/verdicts`) exposes relayer state and verdict records.
+- **Runs entirely on Vercel.** The relayer logic also ships as Vercel Functions (`frontend/api/`): the dApp's polling drives
+  GenLayer adjudication and on-chain settlement with no separate server (see [DEPLOY.md](DEPLOY.md)). An always-on
+  relayer (`relayer/`, Docker) remains available for unattended settlement and exposes a read-only API.
 
 ## Layout
 
@@ -33,8 +35,8 @@ Wallet ──depositIntent──▶ KatalystVault (Solidity, Portaldot / pallet-
 contracts/evm       KatalystVault.sol  — the deployed vault (Solidity, EVM RPC)   ← primary
 contracts/vault     ink! 4.3 version   — built OK, but ~1,000 tPOT to deploy; kept for reference
 genlayer            intelligent_vault_solver.py (GenVM Python)
-relayer             EVM log poller + GenLayer client + compile/test/deploy scripts (Node ≥ 20)
-frontend            Vite + React + Tailwind v4 dApp (MetaMask / EIP-1193)
+relayer             always-on relayer (optional) + compile/test/deploy scripts (Node ≥ 20)
+frontend            Vite + React + Tailwind v4 dApp (MetaMask / EIP-1193) + api/ (serverless relayer for Vercel)
 ```
 
 ## Trust model

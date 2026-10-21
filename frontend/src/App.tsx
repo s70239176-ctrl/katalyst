@@ -9,7 +9,7 @@ import { SecurityLab } from './components/SecurityLab';
 import { Stepper, type Step } from './components/Stepper';
 import { VerdictCard } from './components/VerdictCard';
 import { ExternalLink, Notice } from './components/ui';
-import { fetchVerdict } from './utils/api';
+import { POLL_INTERVAL_MS, fetchVerdict } from './utils/api';
 import { previewIntent } from './utils/genlayer';
 import {
   VAULT_ADDRESS,
@@ -40,7 +40,6 @@ import {
   type WalletState,
 } from './utils/types';
 
-const POLL_MS = 4000;
 const MAX_POLLS = 150;
 
 const PAGES: readonly Page[] = ['intent', 'activity', 'network', 'security'];
@@ -153,15 +152,13 @@ export default function App() {
   const pollLifecycle = useCallback(async (d: DepositReceipt) => {
     const token = ++pollToken.current;
     for (let i = 0; i < MAX_POLLS; i++) {
-      await new Promise((r) => setTimeout(r, POLL_MS));
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       if (token !== pollToken.current) return;
 
-      const [rec, result] = await Promise.all([
-        fetchVerdict(d.nonce),
-        fetchOutcome(VAULT_ADDRESS, d.nonce, d.blockNumber).catch(() => null),
-      ]);
+      // Check the chain first (fast and authoritative). In serverless mode the relay call below does real
+      // work and can take a while, so a settled intent must never wait on it.
+      const result = await fetchOutcome(VAULT_ADDRESS, d.nonce, d.blockNumber).catch(() => null);
       if (token !== pollToken.current) return;
-      if (rec) setRecord(rec);
 
       if (result) {
         setOutcome(result);
@@ -170,10 +167,17 @@ export default function App() {
           setMessage(result.status === 'Rejected' ? 'The solver rejected this intent. Your deposit was refunded.' : 'Intent cancelled. Your deposit was refunded.');
         }
         setRefreshKey((k) => k + 1);
-        // The refund-return transaction lands shortly after settlement; pick up the final record.
-        setTimeout(() => void fetchVerdict(d.nonce).then((r) => r && token === pollToken.current && setRecord(r)), 10000);
+        // Enrich with consensus details and the refund-return once available.
+        const enrich = () => void fetchVerdict(d.nonce, { block: d.blockNumber }).then((r) => r && token === pollToken.current && setRecord(r));
+        enrich();
+        setTimeout(enrich, 10000);
         return;
       }
+
+      const rec = await fetchVerdict(d.nonce, { block: d.blockNumber });
+      if (token !== pollToken.current) return;
+      if (rec) setRecord(rec);
+
       setStage(rec?.phase === 'settling' ? 'settling' : 'adjudicating');
       if (rec?.phase === 'failed') {
         setStage('error');
