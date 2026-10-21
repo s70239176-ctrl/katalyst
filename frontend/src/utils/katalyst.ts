@@ -20,6 +20,8 @@ export function getKatalyst(): Katalyst {
       rpcUrl: c.rpcUrl,
       chainId: c.chainId,
       deployBlock: c.deployBlock,
+      version: c.version,
+      ...(c.hub ? { hub: c.hub } : {}),
       legacyNonceRefs: c.legacyNonceRefs,
       ...(GENLAYER_CONTRACT
         ? { genlayer: { contract: GENLAYER_CONTRACT, privateKey: previewKey(), ...(c.legacyNonceRefs && FALLBACKS.length ? { fallbackContracts: FALLBACKS } : {}) } }

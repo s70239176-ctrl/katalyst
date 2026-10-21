@@ -23,9 +23,12 @@ flowchart LR
 
 | | |
 | --- | --- |
-| Vault (Portaldot V3 Testnet, chain 420420777) | `0x74fcFD25f70fcB562e09930D92d39d6B4cCFCc71` |
+| **Vault v2** (Portaldot V3 Testnet, chain 420420777) | `0x786DEF20A47b7B22c67eBaac3A9a3b3D5C0ddD46` |
+| PoolHub (v2 pool positions) | `0xE987E541075b404c2376c9d94A517A2A9Af0997E` |
+| Vault v1 (kept for history, selectable in the app) | `0x74fcFD25f70fcB562e09930D92d39d6B4cCFCc71` |
 | Solver (GenLayer Studionet) | `0x8cE92023E3052C428876139a2Ca8F666179eBf2B` |
-| Exercised | approved settlements (single pool and 57/43 splits), a prompt-injection rejection with refund, both via the always-on and the serverless relayer, plus a second settlement chain |
+| Exercised (v1) | approved settlements (single pool and 57/43 splits), a prompt-injection rejection with refund, both via the always-on and the serverless relayer, plus a second settlement chain |
+| Exercised (v2) | route-locked and unlocked settlements through the serverless relayer and the safety delay, a **rogue relayer proposal caught by the guardian and vetoed with a full refund**, depositor cancel, pool withdrawal, every one independently verified (`katalyst verify`) |
 
 ## Features
 
@@ -44,9 +47,10 @@ flowchart LR
 - **Commitment-bound settlement:** the relayer cannot change who is paid, how much, or the prompt. See
   [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) (including what is *not* guaranteed).
 
-**v2 contracts (built and tested, not yet deployed)** — permissionless refunds after a timeout, pause / two-step ownership / relayer
-rotation, an immutable fee and deposit cap, an opt-in route lock, real withdrawable pool positions (`PoolHub`), and an optimistic
-settlement delay with owner veto. See [docs/V2_DESIGN.md](docs/V2_DESIGN.md).
+**v2 contracts (live)** — permissionless refunds after a timeout, pause / two-step ownership / relayer rotation, an immutable
+fee and deposit cap, an opt-in **route lock** ("what you preview is what you get"), real withdrawable pool positions
+(`PoolHub`), and an **optimistic settlement delay with owner veto** plus a **guardian** that vetoes any proposal that differs from
+what the validators agreed. See [docs/V2_DESIGN.md](docs/V2_DESIGN.md).
 
 **Infrastructure**
 - **Runs entirely on Vercel:** the relayer ships as Vercel Functions driven by the dApp; an always-on Docker relayer is
@@ -61,10 +65,10 @@ settlement delay with owner veto. See [docs/V2_DESIGN.md](docs/V2_DESIGN.md).
 ## Layout
 
 ```
-contracts/evm       KatalystVault.sol — the vault (Solidity, EVM RPC)             ← primary
+contracts/evm       KatalystVault.sol (v1) and v2/ (KatalystVaultV2.sol + PoolHub.sol)   ← primary
 contracts/vault     ink! 4.3 variant — builds, but ~1,000 tPOT to deploy; kept for reference
 genlayer/           solver (intelligent_vault_solver.py), example consumer, unit tests
-relayer/            always-on relayer (optional), deploy / test / fuzz scripts (Node ≥ 20)
+relayer/            always-on relayer (optional), deploy / test / fuzz scripts, guardian (Node ≥ 20)
 frontend/           dApp (src/), SDK (src/sdk/), widget (src/widget/), serverless relayer (api/)
 cli/                `katalyst` command line
 docs/               architecture, threat model, observability, integration, 90-second demo script
@@ -81,9 +85,11 @@ npm run fuzz:evm             # randomised invariant test (conservation, replay, 
 npm run test:solver          # 31 solver + example unit tests (Python)
 npm run fund:info            # prints each EVM key's mapped native account — send tPOT THERE
 npm run estimate:evm         # balance + gas/deposit estimate, sends nothing
-npm run deploy:evm           # deploy; writes VAULT_CONTRACT_ADDRESS into .env
+npm run deploy:evm           # deploy v1; writes VAULT_CONTRACT_ADDRESS into .env
 npm run compile:v2 && npm run test:v2 && npm run fuzz:v2   # v2 contracts: 11 scenario tests + randomised invariants
 npm run estimate:v2          # real-chain cost estimate for v2 (sends nothing)
+npm run deploy:v2            # deploy PoolHub + vault v2 (dry run without --send)
+npm run guardian             # watch v2 proposals; add -- --veto to cancel any that differ from the validators' verdict
 
 # 2. GenLayer solver (Studionet is gasless)
 node scripts/deploy_genlayer.mjs
@@ -103,12 +109,14 @@ Solidity tests + fuzz, solver tests, Slither, and an uptime check.
 ## Honest limitations
 
 - **Unaudited testnet software.** The vault cannot verify GenLayer's result on-chain, so it trusts the relayer to relay the
-  verdict faithfully; deviations are *detectable* (Verify) but not prevented. A relayer quorum, `refundExpired`, pause and
-  multisig ownership are planned for a v2 contract.
+  verdict faithfully. v2 bounds that trust: a proposed route waits out a delay during which the owner (or the guardian script)
+  can veto it, and the depositor can lock the route. A relayer *quorum* is the next step once there are independent operators.
+  The veto relies on someone watching during the delay, and the owner is a single key (multisig / timelock planned).
 - **Demo pools** are generated addresses, not yield strategies; funds sent to them are not invested.
 - Oracle endpoints in the solver are placeholders; on failure it uses an embedded APY/eco table (feeds can only change APY and
   tier of *known* pools, never addresses).
-- `owner` and `relayer` are `immutable` (no storage deposit): rotating them means redeploying.
+- v1 has `immutable` owner and relayer (rotating them means redeploying). v2 can rotate the relayer and transfer ownership, but
+  its fee, cap, timeout and delay are immutable by design.
 - In serverless mode settlement advances only while a page is polling (see [DEPLOY.md](DEPLOY.md) for the limits and the
   always-on alternative).
 - The public RPC prunes old transactions (it keeps logs), so verification falls back to events and says so.

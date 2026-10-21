@@ -5,6 +5,11 @@ import { GreyboxModal } from './components/GreyboxModal';
 import { Header, type Page } from './components/Header';
 import { IntentTerminal, EXAMPLES, type PreviewState } from './components/IntentTerminal';
 import { NetworkPage } from './components/NetworkPage';
+import { PositionsPage } from './components/PositionsPage';
+import type { VaultPolicy } from './sdk/vault';
+import { routeLockOf } from './sdk/vault';
+import { getKatalyst } from './utils/katalyst';
+import { isV2 } from './utils/vaultAbi';
 import { ReceiptPage } from './components/ReceiptPage';
 import { VerifyPage } from './components/VerifyPage';
 import { RouteVisualizer } from './components/RouteVisualizer';
@@ -33,7 +38,7 @@ import { formatPot, shortHash, type FlowStage, type IntentOutcome, type NetworkS
 
 const MAX_POLLS = 150;
 
-const PAGES: readonly Page[] = ['intent', 'activity', 'network', 'verify', 'security', 'receipt'];
+const PAGES: readonly Page[] = ['intent', 'activity', 'positions', 'network', 'verify', 'security', 'receipt'];
 
 interface Route {
   page: Page;
@@ -66,6 +71,9 @@ export default function App() {
   const [amount, setAmount] = useState('1');
   const [preview, setPreview] = useState<PreviewState>({ status: 'idle' });
   const [previewVerdict, setPreviewVerdict] = useState<VerdictPayload | null>(null);
+  const [policy, setPolicy] = useState<VaultPolicy | null>(null);
+  const [lockRoute, setLockRoute] = useState(false);
+  const [clock, setClock] = useState(() => Math.floor(Date.now() / 1000));
 
   const [stage, setStage] = useState<FlowStage>('idle');
   const [deposit, setDeposit] = useState<DepositReceipt | null>(null);
@@ -141,10 +149,31 @@ export default function App() {
 
   const wrongNetwork = wallet !== null && walletChain !== null && walletChain !== chainId();
 
+  // v2: the vault's fixed rules (fee, cap, timeout, delay) are shown before the user commits.
+  useEffect(() => {
+    if (!isV2() || !vaultAddress()) return;
+    let cancelled = false;
+    void (async () => {
+      for (let attempt = 0; attempt < 4 && !cancelled; attempt++) {
+        try {
+          const p = await getKatalyst().vault.policy();
+          if (!cancelled) setPolicy(p);
+          return;
+        } catch {
+          await new Promise((r) => setTimeout(r, 2500 * (attempt + 1)));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // ---- preview ------------------------------------------------------------------
   const handlePreview = useCallback(async () => {
     setPreview({ status: 'loading' });
     setPreviewVerdict(null);
+    setLockRoute(false);
     try {
       setPreviewVerdict(await previewIntent(prompt.trim()));
       setPreview({ status: 'ready' });
@@ -169,7 +198,15 @@ export default function App() {
         setOutcome(result);
         setStage(result.status === 'Executed' ? 'executed' : 'rejected');
         if (result.status !== 'Executed') {
-          setMessage(result.status === 'Rejected' ? 'The solver rejected this intent. Your deposit was refunded.' : 'Intent cancelled. Your deposit was refunded.');
+          setMessage(
+            result.status === 'Rejected'
+              ? 'The solver rejected this intent. Your deposit was refunded' + (result.fee ? ` (minus the ${formatPot(result.fee, 4)} ${tokenSymbol()} fee).` : '.')
+              : result.status === 'Expired'
+                ? 'The timeout passed before the intent settled, so it was refunded in full. No fee was charged.'
+                : result.status === 'Vetoed'
+                  ? 'The vault owner vetoed the proposed route during the safety delay. Your deposit was refunded in full.'
+                  : 'Intent cancelled. Your deposit was refunded.',
+          );
         }
         setRefreshKey((k) => k + 1);
         if (notifyRef.current && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
@@ -186,7 +223,12 @@ export default function App() {
       if (token !== pollToken.current) return;
       if (rec) setRecord(rec);
 
-      setStage(rec?.phase === 'settling' ? 'settling' : 'adjudicating');
+      setStage(rec?.phase === 'settling' ? 'settling' : rec?.phase === 'proposed' ? 'proposed' : 'adjudicating');
+      if (rec?.phase === 'lock_mismatch') {
+        setStage('error');
+        setMessage('The validators now choose a different route than the one you locked, so nothing was paid. Cancel for a full refund (no fee); it also refunds by itself when the timeout passes.');
+        return;
+      }
       if (rec?.phase === 'failed') {
         setStage('error');
         setMessage('The relayer could not complete this intent. You can cancel it for a full refund.');
@@ -205,7 +247,11 @@ export default function App() {
     setDeposit(null);
     setStage('depositing');
     try {
-      const d = await depositIntent(vaultAddress(), prompt, amount);
+      const lock =
+        isV2() && lockRoute && previewVerdict?.status === 'APPROVED'
+          ? routeLockOf(previewVerdict.allocations.map((a) => ({ pool: a.target_pool, pct: a.percentage })))
+          : undefined;
+      const d = await depositIntent(vaultAddress(), prompt, amount, lock);
       setDeposit(d);
       setStage('adjudicating');
       void pollLifecycle(d);
@@ -213,7 +259,7 @@ export default function App() {
       setStage('error');
       setMessage(errorText(err, 'Deposit failed'));
     }
-  }, [wallet, prompt, amount, pollLifecycle]);
+  }, [wallet, prompt, amount, pollLifecycle, lockRoute, previewVerdict]);
 
   const handleCancel = useCallback(async () => {
     if (!deposit) return;
@@ -240,7 +286,12 @@ export default function App() {
   useEffect(() => () => void (pollToken.current += 1), []);
 
   // ---- derived UI state ---------------------------------------------------------
-  const busy = stage === 'depositing' || stage === 'adjudicating' || stage === 'settling';
+  const busy = stage === 'depositing' || stage === 'adjudicating' || stage === 'proposed' || stage === 'settling';
+  useEffect(() => {
+    if (stage !== 'proposed') return;
+    const t = setInterval(() => setClock(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [stage]);
   const disabledReason = !vaultAddress()
     ? 'The vault address is not configured (VITE_VAULT_ADDRESS).'
     : network !== 'online'
@@ -271,8 +322,8 @@ export default function App() {
       },
       {
         title: 'GenLayer validators reach consensus',
-        state: failed && !gl ? 'failed' : gl || settled ? 'done' : deposit ? 'active' : 'pending',
-        detail: gl ? (
+        state: failed && !gl ? 'failed' : (gl && gl.validatorsTotal > 0) || settled ? 'done' : deposit ? 'active' : 'pending',
+        detail: gl && gl.validatorsTotal > 0 ? (
           <>
             {gl.validatorsAgreed}/{gl.validatorsTotal} validators agreed ·{' '}
             <ExternalLink href={gl.explorerUrl} mono>
@@ -281,18 +332,34 @@ export default function App() {
           </>
         ) : deposit && !settled ? (
           'Validators are reading your intent…'
+        ) : settled && (outcome?.status === 'Cancelled' || outcome?.status === 'Expired') ? (
+          'Not needed: the intent ended before consensus.'
         ) : undefined,
       },
       {
         title: `Settlement on ${activeChain().name}`,
-        state: settled ? 'done' : failed && gl ? 'failed' : record?.phase === 'settling' ? 'active' : 'pending',
+        state: settled ? 'done' : failed && gl ? 'failed' : record?.phase === 'settling' || record?.phase === 'proposed' ? 'active' : 'pending',
         detail: outcome ? (
           <>
-            {outcome.status === 'Executed' ? `Routed to ${outcome.route?.length ?? 0} pool${(outcome.route?.length ?? 0) === 1 ? '' : 's'}` : outcome.status === 'Rejected' ? 'Rejected — deposit refunded' : 'Cancelled — deposit refunded'} ·{' '}
+            {outcome.status === 'Executed'
+              ? `Routed to ${outcome.route?.length ?? 0} pool${(outcome.route?.length ?? 0) === 1 ? '' : 's'}${outcome.fee ? ` · fee ${formatPot(outcome.fee, 4)} ${tokenSymbol()}` : ''}`
+              : outcome.status === 'Rejected'
+                ? 'Rejected — deposit refunded'
+                : outcome.status === 'Expired'
+                  ? 'Timed out — deposit refunded in full'
+                  : outcome.status === 'Vetoed'
+                    ? 'Vetoed during the safety delay — deposit refunded in full'
+                    : 'Cancelled — deposit refunded'}{' '}
+            ·{' '}
             <ExternalLink href={explorerBlockUrl(outcome.blockNumber)} mono>
               {shortHash(outcome.txHash)}
             </ExternalLink>
           </>
+        ) : record?.phase === 'proposed' ? (
+          (() => {
+            const left = record.proposal?.readyAt ? Math.max(0, record.proposal.readyAt - clock) : null;
+            return left === null ? 'Route proposed. Waiting out the safety delay…' : left > 0 ? `Route proposed. Safety delay: ${left}s left. The vault owner can veto it until then.` : 'Safety delay over. Finalising on-chain…';
+          })()
         ) : verdict && record?.phase === 'settling' ? (
           verdict.approved ? 'Sending funds to the agreed pools…' : 'Refunding your deposit…'
         ) : undefined,
@@ -349,6 +416,10 @@ export default function App() {
               preview={preview}
               onPreview={() => void handlePreview()}
               onSubmit={() => void handleSubmit()}
+              policy={policy}
+              lockRoute={lockRoute}
+              onLockRouteChange={setLockRoute}
+              canLock={previewVerdict?.status === 'APPROVED'}
             />
 
             <div className="space-y-6">
@@ -358,7 +429,7 @@ export default function App() {
                     <h2 id="progress-title" className="text-lg font-semibold tracking-tight">
                       Intent #{deposit.nonce}
                     </h2>
-                    {(stage === 'adjudicating' || stage === 'settling' || stage === 'error') && !outcome && (
+                    {(stage === 'adjudicating' || stage === 'proposed' || stage === 'settling' || stage === 'error') && !outcome && (
                       <button type="button" className="btn btn-sm" onClick={() => void handleCancel()} disabled={cancelling}>
                         {cancelling ? 'Cancelling…' : 'Cancel & refund'}
                       </button>
@@ -448,6 +519,7 @@ export default function App() {
         )}
 
         {page === 'activity' && <ActivityPage wallet={wallet} onConnect={() => void handleConnect()} onOpen={(intent, rec) => setReceipt({ intent, record: rec })} refreshKey={refreshKey} />}
+        {page === 'positions' && <PositionsPage wallet={wallet} onConnect={() => void handleConnect()} refreshKey={refreshKey} />}
         {page === 'network' && <NetworkPage refreshKey={refreshKey} />}
         {page === 'verify' && <VerifyPage initialNonce={route.nonce} onNavigate={(p, n) => navigate(p, n)} />}
         {page === 'receipt' && <ReceiptPage nonce={route.nonce} onNavigate={(p, n) => navigate(p, n)} />}

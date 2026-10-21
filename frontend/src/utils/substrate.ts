@@ -20,7 +20,7 @@ import {
 import { encodeAddress } from '@polkadot/util-crypto';
 import { hexToU8a, u8aConcat } from '@polkadot/util';
 import { activeChain, blockUrl, chainId, rpcUrl, vaultAddress, vaultDeployBlock } from './chains';
-import { executedAmount, feeOf, isV2, settledEventNames, statusOfEvent, vaultAbi } from './vaultAbi';
+import { HUB_ABI, executedAmount, feeOf, isV2, settledEventNames, statusOfEvent, vaultAbi } from './vaultAbi';
 import {
   SS58_PREFIX,
   parsePot,
@@ -242,6 +242,18 @@ export async function cancelIntent(contractAddress: string, deposit: DepositRece
   const receipt = await tx.wait();
   if (!receipt || receipt.status !== 1) throw new Error('Cancel transaction failed');
   return receipt.hash;
+}
+
+/** v2: pull `amount` of the caller's position in `pool` back from the PoolHub. Always allowed, even while paused. */
+export async function withdrawPosition(hubAddress: string, pool: string, amount: bigint): Promise<{ txHash: string; blockNumber: number }> {
+  const signer = await new BrowserProvider(injected()).getSigner();
+  const hub = new Contract(getAddress(hubAddress), HUB_ABI, signer);
+  const fn = hub.getFunction('withdraw');
+  await fn.staticCall(getAddress(pool), amount);
+  const tx = await fn(getAddress(pool), amount);
+  const receipt = await tx.wait();
+  if (!receipt || receipt.status !== 1) throw new Error('Withdrawal failed');
+  return { txHash: receipt.hash, blockNumber: receipt.blockNumber };
 }
 
 async function logsBetween(

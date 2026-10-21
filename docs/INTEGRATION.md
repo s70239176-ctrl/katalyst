@@ -85,8 +85,11 @@ One solver can serve several vaults on different EVM chains. Intents are keyed b
 nonce on two chains never collides (this is tested: the same vault address and nonce on Portaldot and a second chain are
 separate intents).
 
-- **Server (`VAULTS`, JSON array):** `[{"key":"portaldot","name":"Portaldot V3 Testnet","chainId":420420777,"rpcUrl":"…","vault":"0x…","deployBlock":124470,"explorerBlockUrl":"https://…/{block}"}, {…}]`
-- **Browser (`VITE_CHAINS`, JSON array):** the same entries plus `symbol`, `portaldotNative`, `legacyNonceRefs`, optional `poolLabels`.
+- **Server (`VAULTS`, JSON array):** `[{"key":"portaldot","name":"Portaldot V3 Testnet","chainId":420420777,"rpcUrl":"…","vault":"0x…","version":2,"deployBlock":136286,"explorerBlockUrl":"https://…/{block}"}, {…}]`
+- **Browser (`VITE_CHAINS`, JSON array):** the same entries plus `symbol`, `portaldotNative`, `legacyNonceRefs`, optional `poolLabels`, and for v2 the `hub` address.
+- **`version`** is `1` (KatalystVault, default) or `2` (KatalystVaultV2 + PoolHub). The SDK takes the same `version` and `hub`
+  (`createKatalyst({ vault, version: 2, … })`); the CLI takes `--version 2 [--hub 0x…]`. A v2 chain adds route locks,
+  proposals/vetoes and pool positions (`k.vault.positions(user)`, `k.vault.policy()`).
   A chain picker appears in the header when there is more than one.
 - Both must describe the same chains. One relayer key is used per chain (`relayerKeyEnv` selects it), so the same EVM key
   can relay everywhere.

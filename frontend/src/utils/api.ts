@@ -51,6 +51,8 @@ interface RelayResponse {
   verdict?: VerdictRecord['verdict'];
   portaldot?: VerdictRecord['portaldot'];
   refund?: VerdictRecord['refund'];
+  proposal?: VerdictRecord['proposal'];
+  expiry?: number;
   error?: string;
 }
 
@@ -82,7 +84,14 @@ function remember(record: VerdictRecord): void {
 
 function toRecord(nonce: number, r: RelayResponse): VerdictRecord | null {
   const phase: IntentPhase | null =
-    r.phase === 'adjudicating' || r.phase === 'settling' || r.phase === 'executed' || r.phase === 'rejected'
+    r.phase === 'adjudicating' ||
+    r.phase === 'settling' ||
+    r.phase === 'executed' ||
+    r.phase === 'rejected' ||
+    r.phase === 'proposed' ||
+    r.phase === 'lock_mismatch' ||
+    r.phase === 'expired' ||
+    r.phase === 'vetoed'
       ? r.phase
       : r.phase === 'cancelled'
         ? 'rejected'
@@ -101,6 +110,8 @@ function toRecord(nonce: number, r: RelayResponse): VerdictRecord | null {
     ...(r.verdict ? { verdict: r.verdict } : {}),
     ...(r.portaldot ? { portaldot: r.portaldot } : {}),
     ...(r.refund ? { refund: r.refund } : {}),
+    ...(r.proposal ? { proposal: r.proposal } : {}),
+    ...(r.expiry ? { expiry: r.expiry } : {}),
   });
 }
 
@@ -144,7 +155,7 @@ export async function fetchVerdict(nonce: number, hint?: { block?: number }): Pr
       ...(fresh.user ? {} : { user: prev?.user ?? '' }),
     };
     lastRecord.set(k(nonce), record);
-    if (record.phase === 'executed' || record.phase === 'rejected') remember(record);
+    if (record.phase === 'executed' || record.phase === 'rejected' || record.phase === 'expired' || record.phase === 'vetoed') remember(record);
     return record;
   } catch (err) {
     // Tolerate transient failures; surface a persistent one so the UI can offer a refund.

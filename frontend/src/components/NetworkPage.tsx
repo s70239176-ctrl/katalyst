@@ -7,12 +7,37 @@ import { vaultAddress, explorerBlockUrl } from '../utils/substrate';
 import { POOL_LABELS, formatPot, timeAgo, type NetworkStats, type RelayerHealth } from '../utils/types';
 import { Badge, CopyButton, ExternalLink, Skeleton, Stat } from './ui';
 import { ValidatorsCard } from './ValidatorsCard';
+import type { VaultPolicy } from '../sdk/vault';
+import { getKatalyst } from '../utils/katalyst';
 
 export function NetworkPage({ refreshKey }: { refreshKey: number }) {
   const [stats, setStats] = useState<NetworkStats | null>(null);
   const [health, setHealth] = useState<RelayerHealth | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusView | null>(null);
+  const [policy, setPolicy] = useState<VaultPolicy | null>(null);
+  const [hubHeld, setHubHeld] = useState<bigint | null>(null);
+
+  useEffect(() => {
+    if (activeChain().version !== 2) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const k = getKatalyst().vault;
+        const p = await k.policy();
+        const held = BigInt(await k.provider.send('eth_getBalance', [p.hub, 'latest']));
+        if (!cancelled) {
+          setPolicy(p);
+          setHubHeld(held);
+        }
+      } catch {
+        /* optional card */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,7 +80,7 @@ export function NetworkPage({ refreshKey }: { refreshKey: number }) {
             <Stat
               label="Settled"
               value={settled}
-              hint={`${stats.executed} routed · ${stats.rejected} rejected · ${stats.cancelled} cancelled`}
+              hint={`${stats.executed} routed · ${stats.rejected} rejected · ${stats.cancelled} refunded`}
             />
           </>
         ) : (
@@ -105,6 +130,7 @@ export function NetworkPage({ refreshKey }: { refreshKey: number }) {
           </h2>
           <dl className="mt-4 space-y-3 text-sm">
             <ContractLine label={`Vault · ${activeChain().name}`} address={vaultAddress()} />
+            {policy && <ContractLine label="PoolHub · pool positions" address={policy.hub} />}
             <ContractLine
               label="Solver · GenLayer Studionet"
               address={GENLAYER_CONTRACT}
@@ -118,6 +144,26 @@ export function NetworkPage({ refreshKey }: { refreshKey: number }) {
           )}
         </section>
       </div>
+
+      {policy && (
+        <section className="card p-5" aria-labelledby="policy-title">
+          <div className="flex items-center justify-between">
+            <h2 id="policy-title" className="text-base font-semibold">
+              Vault rules
+            </h2>
+            <Badge tone={policy.paused ? 'warn' : 'ok'}>{policy.paused ? 'Paused' : 'Active'}</Badge>
+          </div>
+          <p className="mt-1 text-sm text-muted">Fixed when the vault was deployed. Nobody, including the owner, can change them.</p>
+          <dl className="mt-4 grid gap-x-8 gap-y-2 text-sm md:grid-cols-2">
+            <Line label="Protocol fee" value={`${formatPot(policy.feeWei, 4)} ${tokenSymbol()}`} />
+            <Line label="Per-deposit cap" value={policy.maxDepositWei > 0n ? `${formatPot(policy.maxDepositWei, 2)} ${tokenSymbol()}` : 'None'} />
+            <Line label="Refund timeout" value={`${Math.round(policy.ttlSeconds / 60)} min`} />
+            <Line label="Settlement delay (owner veto window)" value={`${policy.delaySeconds}s`} />
+            <Line label="Owner" value={<span className="mono">{policy.owner}</span>} />
+            <Line label="Held in pools (PoolHub)" value={hubHeld !== null ? `${formatPot(hubHeld, 2)} ${tokenSymbol()}` : '…'} />
+          </dl>
+        </section>
+      )}
 
       {status && (
         <section className="card" aria-labelledby="status-title">

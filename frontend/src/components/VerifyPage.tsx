@@ -202,7 +202,7 @@ function Evidence({ proof }: { proof: ProofBundle }) {
           </Row>
         )}
         {proof.settlement && (
-          <Row label={proof.settlement.kind === 'executed' ? 'Settlement' : proof.settlement.kind === 'rejected' ? 'Refund (rejected)' : 'Refund (cancelled)'}>
+          <Row label={proof.settlement.kind === 'executed' ? 'Settlement' : proof.settlement.kind === 'rejected' ? 'Refund (rejected)' : proof.settlement.kind === 'expired' ? 'Refund (timed out)' : proof.settlement.kind === 'vetoed' ? 'Refund (vetoed)' : 'Refund (cancelled)'}>
             <ExternalLink href={explorerBlockUrl(proof.settlement.blockNumber)} mono>
               block {proof.settlement.blockNumber}
             </ExternalLink>

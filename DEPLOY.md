@@ -73,6 +73,18 @@ been deployed with that key's address as `relayer`. `/api/status` then reports e
 
 If you redeploy the GenLayer solver, keep the old addresses in `VITE_GENLAYER_FALLBACKS` so earlier intents still verify.
 
+## Using the v2 vault
+
+Mark the chain entry `"version": 2` in both `VAULTS` (server) and `VITE_CHAINS` (browser; also add `"hub"`), see
+`frontend/.env.example`. Points to know:
+
+- **Fund the relayer well.** A settlement reserves about 9 tPOT up front, so a relayer below that gets `Invalid Transaction`.
+- **The delay needs polling too.** With a settlement delay the route is *proposed* by one poll and *finalised* by a later one
+  after the delay (60 s on the live vault); the dApp keeps polling and shows a countdown. Anyone can finalise, and after the
+  timeout (1 h on the live vault) anyone can refund, so a stalled intent never traps funds.
+- **Run the guardian** while `delay > 0`: `npm --prefix relayer run guardian -- --veto --loop 20`. It needs the vault owner's key
+  (`DEPLOYER_PRIVATE_KEY`, or `GUARDIAN_PRIVATE_KEY`) and vetoes any proposal that differs from the validators' verdict.
+
 ## Widget
 
 `npm run build` also emits `dist/widget/katalyst-widget.js` (the `<katalyst-preview>` web component) and `dist/widget-demo.html`.

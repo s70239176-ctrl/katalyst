@@ -13,7 +13,7 @@ interface ActivityPageProps {
   refreshKey: number;
 }
 
-const statusTone = (s: string) => (s === 'Executed' ? 'ok' : s === 'Rejected' ? 'bad' : s === 'Cancelled' ? 'warn' : 'info');
+const statusTone = (s: string) => (s === 'Executed' ? 'ok' : s === 'Rejected' ? 'bad' : s === 'Cancelled' || s === 'Expired' || s === 'Vetoed' ? 'warn' : 'info');
 
 export function ActivityPage({ wallet, onConnect, onOpen, refreshKey }: ActivityPageProps) {
   const [rows, setRows] = useState<UserIntent[] | null>(null);

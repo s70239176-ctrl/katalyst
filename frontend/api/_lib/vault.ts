@@ -27,6 +27,7 @@ const V2_ABI = [
   'function executeAdjudicatedIntent((uint64 nonce, address user, uint256 amount, bytes32 promptHash, bytes32 routeLock, uint64 expiry) i, (address pool, uint8 pct, bytes8 eco)[] legs)',
   'function finalizeSettlement((uint64 nonce, address user, uint256 amount, bytes32 promptHash, bytes32 routeLock, uint64 expiry) i, (address pool, uint8 pct, bytes8 eco)[] legs, uint64 readyAt)',
   'function rejectIntent((uint64 nonce, address user, uint256 amount, bytes32 promptHash, bytes32 routeLock, uint64 expiry) i)',
+  'function vetoSettlement((uint64 nonce, address user, uint256 amount, bytes32 promptHash, bytes32 routeLock, uint64 expiry) i)',
   'function refundExpired((uint64 nonce, address user, uint256 amount, bytes32 promptHash, bytes32 routeLock, uint64 expiry) i)',
   'function pending(uint64 nonce) view returns (bytes32)',
   'function proposed(uint64 nonce) view returns (bytes32)',

@@ -19,7 +19,8 @@
     "test:v2": "node scripts/test_v2.mjs",
     "fuzz:v2": "node scripts/fuzz_v2.mjs",
     "estimate:v2": "node scripts/deploy_v2.mjs",
-    "deploy:v2": "node scripts/deploy_v2.mjs --send"
+    "deploy:v2": "node scripts/deploy_v2.mjs --send",
+    "guardian": "node --env-file=.env --import tsx scripts/guardian.mts"
   },
   "dependencies": {
     "dotenv": "^18.0.8",

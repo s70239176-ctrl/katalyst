@@ -1,5 +1,6 @@
 import { useMemo, useRef, type UIEvent } from 'react';
 import { activeChain, tokenSymbol } from '../utils/chains';
+import type { VaultPolicy } from '../sdk/vault';
 import { formatPot, parsePot } from '../utils/types';
 import { Spinner } from './ui';
 
@@ -52,6 +53,13 @@ interface IntentTerminalProps {
   preview: PreviewState;
   onPreview: () => void;
   onSubmit: () => void;
+  /** v2: the vault's fixed fee, cap, timeout and settlement delay. */
+  policy?: VaultPolicy | null;
+  /** v2: bind the deposit to the previewed route. */
+  lockRoute?: boolean;
+  onLockRouteChange?: (v: boolean) => void;
+  /** The preview produced an approved route that can be locked. */
+  canLock?: boolean;
 }
 
 export function IntentTerminal({
@@ -66,6 +74,10 @@ export function IntentTerminal({
   preview,
   onPreview,
   onSubmit,
+  policy,
+  lockRoute = false,
+  onLockRouteChange,
+  canLock = false,
 }: IntentTerminalProps) {
   const chain = activeChain();
   const FEE_ESTIMATE = chain.feeEstimate;
@@ -174,8 +186,35 @@ export function IntentTerminal({
         </div>
       </div>
 
+      {chain.version === 2 && policy && (
+        <ul className="mt-3 grid gap-1 rounded-lg border border-line bg-bg px-3.5 py-2.5 text-xs text-muted sm:grid-cols-2">
+          <li>
+            Protocol fee <span className="text-fg">{formatPot(policy.feeWei, 4)} {tokenSymbol()}</span>, only if the relayer settles or rejects
+          </li>
+          <li>
+            Per-deposit cap <span className="text-fg">{policy.maxDepositWei > 0n ? `${formatPot(policy.maxDepositWei, 2)} ${tokenSymbol()}` : 'none'}</span>
+          </li>
+          <li>
+            Safety delay <span className="text-fg">{policy.delaySeconds}s</span>, during which the vault owner can veto
+          </li>
+          <li>
+            Automatic refund <span className="text-fg">after {Math.round(policy.ttlSeconds / 60)} min</span> if nothing settles
+          </li>
+        </ul>
+      )}
+      {chain.version === 2 && onLockRouteChange && (
+        <label className={`mt-3 flex items-start gap-2 text-sm ${canLock ? '' : 'opacity-60'}`}>
+          <input type="checkbox" className="mt-1" checked={lockRoute && canLock} disabled={!canLock || busy} onChange={(e) => onLockRouteChange(e.target.checked)} />
+          <span>
+            <span className="font-medium">Lock this route.</span>{' '}
+            <span className="text-muted">{canLock ? 'The vault will pay exactly the previewed route or nothing. If the market moves, you are refunded without a fee.' : 'Preview an approved verdict first to lock its route.'}</span>
+          </span>
+        </label>
+      )}
       <p id="amount-help" className="mt-2 text-xs text-subtle">
-        {chain.portaldotNative
+        {chain.version === 2
+          ? <>Estimated network fee ≈ {FEE_ESTIMATE} {tokenSymbol()}, mostly a storage deposit that you recover when you withdraw your position. Keep about {UPFRONT_RESERVE} {tokenSymbol()} spare for gas.</>
+          : chain.portaldotNative
           ? <>Estimated network fee ≈ {FEE_ESTIMATE} {tokenSymbol()}, including a storage deposit that the relayer returns to you after settlement. Keep about {UPFRONT_RESERVE} {tokenSymbol()} spare for gas.</>
           : <>Estimated network fee ≈ {FEE_ESTIMATE} {tokenSymbol()}. Keep about {UPFRONT_RESERVE} {tokenSymbol()} spare for gas.</>}
       </p>

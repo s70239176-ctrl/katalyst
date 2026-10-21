@@ -54,12 +54,18 @@ vault balance equals the sum of pending deposits, reverted calls change nothing,
 | R11 | **Key handling** | Relayer key lives only in server env (Vercel/host secrets), never in the browser bundle; `.env` files are git-ignored and scanned before commits | Immutable `relayer`/`owner` mean rotation = redeploy |
 | R12 | **Front-end tampering / supply chain** | Wallet signs only `depositIntent` / `cancelIntent`; pinned dependency versions; security headers | Standard web risks apply |
 
-## v2 contracts (implemented and tested; not yet deployed)
+## v2 contracts (deployed on testnet, tested, exercised live)
 
-`docs/V2_DESIGN.md` describes the mitigations that address the "planned" items above: **permissionless `refundExpired`** (R3),
+`docs/V2_DESIGN.md` describes the mitigations that address the "planned" items above (vault `0x786DEF20…dD46`, PoolHub `0xE987E541…97E`): **permissionless `refundExpired`** (R3),
 a **settlement delay with owner veto** that bounds a compromised relayer (R2), **pause, two-step ownership and relayer
 rotation** (R4, R11), an **opt-in route lock**, an immutable **fee** and **deposit cap**, and a **PoolHub** holding real,
 withdrawable positions. A relayer quorum is deliberately left for when there are independent operators.
+
+Demonstrated live: a relayer key that proposed a route the validators had not chosen (100% to a C-Tier pool) was caught by
+`relayer/scripts/guardian.mts` inside the delay window and vetoed, the depositor was refunded in full, and Verify reports the
+veto as justified (`relayer/scripts/test_guardian_v2.mts`). Residual risks that remain in v2: nobody watching during the delay,
+a compromised owner key (it can veto and pause, and can rotate the relayer, but cannot move deposits to itself), and the
+single-RPC trust point.
 
 ## Out of scope / known limitations
 

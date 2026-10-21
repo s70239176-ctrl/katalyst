@@ -3,11 +3,12 @@ import { formatPot, shortAddress, type NetworkStatus, type WalletState } from '.
 import { CHAINS, activeChain, setActiveChain, tokenSymbol } from '../utils/chains';
 import { CopyButton } from './ui';
 
-export type Page = 'intent' | 'activity' | 'network' | 'verify' | 'security' | 'receipt';
+export type Page = 'intent' | 'activity' | 'positions' | 'network' | 'verify' | 'security' | 'receipt';
 
 const NAV: ReadonlyArray<{ id: Page; label: string }> = [
   { id: 'intent', label: 'Intent' },
   { id: 'activity', label: 'Activity' },
+  { id: 'positions', label: 'Positions' },
   { id: 'network', label: 'Network' },
   { id: 'verify', label: 'Verify' },
   { id: 'security', label: 'Security lab' },
@@ -53,7 +54,7 @@ export function Header({ page, onNavigate, wallet, balance, network, connecting,
             <span className="text-[15px] font-semibold tracking-tight">Katalyst</span>
           </button>
           <nav aria-label="Primary" className="hidden gap-1 md:flex">
-            {NAV.map((n) => (
+            {NAV.filter((n) => n.id !== 'positions' || chain.version === 2).map((n) => (
               <button
                 key={n.id}
                 type="button"
@@ -124,7 +125,7 @@ export function Header({ page, onNavigate, wallet, balance, network, connecting,
       </div>
 
       <nav aria-label="Primary mobile" className="flex gap-1 overflow-x-auto border-t border-line px-3 py-2 md:hidden">
-        {NAV.map((n) => (
+        {NAV.filter((n) => n.id !== 'positions' || chain.version === 2).map((n) => (
           <button
             key={n.id}
             type="button"

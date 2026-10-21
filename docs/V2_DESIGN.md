@@ -1,7 +1,34 @@
 # Katalyst v2 — contract design
 
-Status: **implemented and tested locally; not yet deployed.** v1 (`contracts/evm/KatalystVault.sol`) stays live on testnet.
-v2 is `contracts/evm/v2/KatalystVaultV2.sol` + `PoolHub.sol`.
+Status: **deployed on Portaldot V3 testnet and exercised end to end.** v1 (`contracts/evm/KatalystVault.sol`) stays live for
+history. v2 is `contracts/evm/v2/KatalystVaultV2.sol` + `PoolHub.sol`.
+
+## Deployment record
+
+| | |
+| --- | --- |
+| Vault v2 | `0x786DEF20A47b7B22c67eBaac3A9a3b3D5C0ddD46` |
+| PoolHub | `0xE987E541075b404c2376c9d94A517A2A9Af0997E` |
+| Deploy block | 136286 |
+| Policy (immutable) | fee 0.05 tPOT · cap 50 tPOT · refund timeout 3600 s · settlement delay 60 s |
+| Pools registered | Alpha, Beta (A-Tier), Gamma (C-Tier) |
+| Deploy cost | ≈ 626 tPOT (hub ≈ 150, vault ≈ 460, pools ≈ 16) |
+
+Live checks (all independently verified with `katalyst verify`): unlocked and route-locked intents settled through the serverless
+relayer and the delay; a rogue proposal vetoed by the guardian with a full refund; a depositor cancel; a pool withdrawal from the app.
+
+### Operational notes from the live run
+
+- **Gas reservation.** A settlement transaction reserves about 9 tPOT of the relayer's balance up front. With less than that
+  the RPC rejects it as `Invalid Transaction` (code 1010). Keep the relayer funded well above that.
+- **Where the storage deposits go.** Settling frees the intent's slots, but it also creates the user's hub-position slots, and
+  the chain charges that to the transaction origin (the relayer). The two roughly cancel, so the relayer nets about its fee
+  minus gas, and the user recovers the storage deposit when they withdraw their position. The relayer therefore no longer
+  forwards a storage refund in v2 (v1 still does); the code forwards only a surplus, and never the relayer's own proposal deposit.
+- **Guardian.** `npm --prefix relayer run guardian -- --veto --loop 20` re-derives the verdict from GenLayer and vetoes any
+  proposal whose route hash differs, a missing verdict, or a route proposed for a rejected intent. A veto works any time before
+  someone finalises, so it also catches a proposal whose delay has passed.
+
 
 ## What changed, and why
 
@@ -83,8 +110,9 @@ Sizes use the compiler's IR pipeline (`viaIR`, ≈25% smaller). The veto window 
 2. `node scripts/deploy_v2.mjs --send [--fee … --cap … --ttl … --delay …]`: deploys the hub (bound to the *predicted* vault
    address), then the vault, registers the pools, and records the addresses in `relayer/.env`. The script refuses to send if
    the balance is below the estimate or the vault lands at an unexpected address.
-3. Wire the off-chain side to v2 (relayer, serverless relay, SDK verification, UI: lock toggle, positions page).
-4. Run a guardian (re-derive the verdict from GenLayer; veto mismatches) if `delay > 0`.
+3. Off-chain wiring (done): serverless relay (`api/_lib/vault_v2.ts`), SDK verification, UI (route lock, policy, positions page,
+   delay countdown), chain entry with `"version": 2` in `VITE_CHAINS` / `VAULTS`.
+4. Run the guardian (`relayer/scripts/guardian.mts`) while `delay > 0`.
 
 ## Not in v2 (and why)
 
