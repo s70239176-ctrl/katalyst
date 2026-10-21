@@ -87,6 +87,11 @@ export default function App() {
 
   const [receipt, setReceipt] = useState<{ intent: UserIntent; record: VerdictRecord | null } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [notifyMe, setNotifyMe] = useState(false);
+  const notifyRef = useRef(false);
+  useEffect(() => {
+    notifyRef.current = notifyMe;
+  }, [notifyMe]);
   const pollToken = useRef(0);
 
   // ---- routing ------------------------------------------------------------------
@@ -178,6 +183,9 @@ export default function App() {
           setMessage(result.status === 'Rejected' ? 'The solver rejected this intent. Your deposit was refunded.' : 'Intent cancelled. Your deposit was refunded.');
         }
         setRefreshKey((k) => k + 1);
+        if (notifyRef.current && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+          new Notification('Katalyst', { body: result.status === 'Executed' ? `Intent #${d.nonce} settled.` : `Intent #${d.nonce} was ${result.status.toLowerCase()} and refunded.` });
+        }
         // Enrich with consensus details and the refund-return once available.
         const enrich = () => void fetchVerdict(d.nonce, { block: d.blockNumber }).then((r) => r && token === pollToken.current && setRecord(r));
         enrich();
@@ -370,6 +378,20 @@ export default function App() {
                   <div className="mt-5">
                     <Stepper steps={steps} />
                   </div>
+                  {!outcome && stage !== 'error' && 'Notification' in window && (
+                    <label className="mt-4 flex items-center gap-2 text-sm text-muted">
+                      <input
+                        type="checkbox"
+                        checked={notifyMe}
+                        onChange={(e) => {
+                          const on = e.target.checked;
+                          if (!on) return setNotifyMe(false);
+                          void Notification.requestPermission().then((p) => setNotifyMe(p === 'granted'));
+                        }}
+                      />
+                      Notify me when it settles
+                    </label>
+                  )}
                   {message && (
                     <p role="status" className={`mt-4 text-sm ${stage === 'error' ? 'text-danger' : 'text-muted'}`}>
                       {message}

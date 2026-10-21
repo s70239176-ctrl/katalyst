@@ -1,0 +1,11 @@
+import { GET as status } from '../../frontend/api/status.ts';
+import { GET as metrics } from '../../frontend/api/metrics.ts';
+const t = Date.now();
+const res = await status();
+const body: any = await res.json();
+console.log(`status HTTP ${res.status} in ${((Date.now() - t) / 1000).toFixed(1)}s ok=${body.ok}`);
+for (const c of body.checks) console.log(`  [${c.level.padEnd(4)}] ${c.label}: ${c.detail}`);
+console.log('  metrics', JSON.stringify(body.metrics));
+console.log('--- prometheus (first lines)');
+console.log((await (await metrics()).text()).split('\n').slice(0, 8).join('\n'));
+process.exit(0);

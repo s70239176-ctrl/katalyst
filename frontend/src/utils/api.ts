@@ -166,3 +166,30 @@ export async function fetchUserVerdicts(user: string): Promise<VerdictRecord[]> 
     return [];
   }
 }
+
+// ---- Status (serverless mode) ---------------------------------------------------------
+
+export interface StatusCheckView {
+  id: string;
+  label: string;
+  level: 'ok' | 'warn' | 'fail';
+  detail: string;
+}
+
+export interface StatusView {
+  ok: boolean;
+  generatedAt: string;
+  checks: StatusCheckView[];
+}
+
+/** Operational checks from /api/status (serverless mode only; the daemon exposes /health and /metrics). */
+export async function fetchStatus(): Promise<StatusView | null> {
+  if (API_MODE !== 'serverless') return null;
+  try {
+    // 503 still carries the JSON body describing what is wrong.
+    const { body } = await getJson<StatusView>('/api/status');
+    return Array.isArray(body.checks) ? body : null;
+  } catch {
+    return null;
+  }
+}

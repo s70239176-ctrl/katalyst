@@ -12,7 +12,9 @@
     "test:evm": "node scripts/test_evm.mjs",
     "estimate:evm": "node scripts/deploy_evm.mjs",
     "deploy:evm": "node scripts/deploy_evm.mjs --send",
-    "fund:info": "node scripts/fund_evm.mjs"
+    "fund:info": "node scripts/fund_evm.mjs",
+    "fuzz:evm": "node scripts/fuzz_evm.mjs",
+    "test:solver": "python -m unittest discover -s ../genlayer/tests -v"
   },
   "dependencies": {
     "dotenv": "^18.0.8",

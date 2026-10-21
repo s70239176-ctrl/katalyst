@@ -10,6 +10,7 @@
  */
 import { explorerBlockUrl, handleError, json } from './_lib/config.js';
 import { genlayerTxUrl, parseVerdict, readResult, submitAdjudication, txState, type TxState, type Verdict } from './_lib/genlayer.js';
+import { notify, notifyEnabled } from './_lib/notify.js';
 import { findSettlement, loadIntent, settle, type Intent } from './_lib/vault.js';
 
 /** Total wall-clock budget per invocation; vercel.json allows 60s, keep a safety margin. */
@@ -87,6 +88,15 @@ async function advance(intent: Intent, base: Record<string, unknown>, glHash: st
   try {
     const res = await settle(intent, verdict.approved, verdict.allocations, SETTLE_WAIT_MS, deadline);
     const included = res.blockNumber > 0;
+    if (included && notifyEnabled() && Date.now() < deadline - 4_000) {
+      const legs = verdict.allocations.map((a) => `${a.percentage}% → ${a.target_pool.slice(0, 6)}…${a.target_pool.slice(-4)} (${a.eco_score})`).join(', ');
+      const votes = genlayer ? ` · ${genlayer.validatorsAgreed}/${genlayer.validatorsTotal} validators agreed` : '';
+      await notify(
+        verdict.approved
+          ? `✅ Katalyst intent #${nonce} executed · ${Number(intent.amount) / 1e18} tPOT · ${legs}${votes} · ${explorerBlockUrl(res.blockNumber)}`
+          : `↩️ Katalyst intent #${nonce} rejected and refunded · ${verdict.reason ?? 'no reason'}${votes} · ${explorerBlockUrl(res.blockNumber)}`,
+      );
+    }
     return json({
       ...base,
       phase: included ? (verdict.approved ? 'executed' : 'rejected') : 'settling',

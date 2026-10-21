@@ -62,6 +62,26 @@ export function startApi(store: VerdictStore, health: HealthSource, port: number
         });
       }
       if (url.pathname === '/stats') return send(200, stats(store.list(10_000)));
+      if (url.pathname === '/metrics') {
+        const st = stats(store.list(10_000));
+        const bal = Number(formatEther(await health.balanceWei()));
+        const last = store.list(200).find((r) => r.phase === 'executed' || r.phase === 'rejected')?.updatedAt;
+        const g = (name: string, help: string, value: number, labels = '') => `# HELP ${name} ${help}
+# TYPE ${name} gauge
+${name}${labels} ${value}
+`;
+        const body =
+          g('katalyst_up', 'The relayer process is running', 1) +
+          g('katalyst_relayer_balance_tpot', 'Relayer gas balance in tPOT', bal) +
+          g('katalyst_queue_length', 'Intents waiting or in flight', health.queueLength()) +
+          g('katalyst_intents_executed', 'Intents routed since the store began', st.executed) +
+          g('katalyst_intents_rejected', 'Intents rejected and refunded', st.rejected) +
+          g('katalyst_intents_failed', 'Intents the relayer failed to process', st.failed) +
+          g('katalyst_uptime_seconds', 'Relayer uptime', Math.round((Date.now() - STARTED) / 1000)) +
+          g('katalyst_last_settlement_timestamp_seconds', 'Unix time of the last settlement', last ? Math.round(last / 1000) : 0) +
+          g('katalyst_median_end_to_end_ms', 'Median deposit-seen to settled time', st.medianEndToEndMs ?? 0);
+        return void res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4' }).end(body);
+      }
       if (url.pathname === '/verdicts') {
         const user = url.searchParams.get('user')?.toLowerCase();
         const rows = store.list(500).filter((r) => !user || r.user.toLowerCase() === user);

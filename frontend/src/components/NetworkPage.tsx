@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { RELAYER_API, fetchHealth } from '../utils/api';
+import { RELAYER_API, fetchHealth, fetchStatus, type StatusView } from '../utils/api';
 import { GENLAYER_CONTRACT, GENLAYER_EXPLORER } from '../utils/genlayer';
 import { fetchNetworkStats } from '../utils/history';
 import { VAULT_ADDRESS, explorerBlockUrl } from '../utils/substrate';
@@ -11,15 +11,17 @@ export function NetworkPage({ refreshKey }: { refreshKey: number }) {
   const [stats, setStats] = useState<NetworkStats | null>(null);
   const [health, setHealth] = useState<RelayerHealth | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<StatusView | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
-        const [s, h] = await Promise.all([fetchNetworkStats(), fetchHealth()]);
+        const [s, h, st] = await Promise.all([fetchNetworkStats(), fetchHealth(), fetchStatus()]);
         if (cancelled) return;
         setStats(s);
         setHealth(h);
+        setStatus(st);
         setError(null);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load network data');
@@ -115,6 +117,30 @@ export function NetworkPage({ refreshKey }: { refreshKey: number }) {
           )}
         </section>
       </div>
+
+      {status && (
+        <section className="card" aria-labelledby="status-title">
+          <div className="flex items-center justify-between border-b border-line px-5 py-4">
+            <h2 id="status-title" className="text-base font-semibold">
+              System status
+            </h2>
+            <Badge tone={status.ok ? 'ok' : 'bad'}>{status.ok ? 'All systems operational' : 'Degraded'}</Badge>
+          </div>
+          <ul className="divide-y divide-line">
+            {status.checks.map((c) => (
+              <li key={c.id} className="flex items-start gap-3 px-5 py-3 text-sm">
+                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: c.level === 'ok' ? 'var(--accent)' : c.level === 'warn' ? 'var(--warn)' : 'var(--danger)' }} aria-hidden="true" />
+                <div>
+                  <p className="font-medium">
+                    {c.label} <span className="sr-only">({c.level})</span>
+                  </p>
+                  <p className="text-muted">{c.detail}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <ValidatorsCard refreshKey={refreshKey} />
 

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { formatEther } from 'ethers';
 import { startApi } from './api.js';
+import { notify } from './notify.js';
 import { triggerGenLayerAdjudication } from './genlayer_client.js';
 import { VerdictStore } from './verdict_store.js';
 import {
@@ -40,6 +41,8 @@ async function main(): Promise<void> {
   console.log(`[RELAYER] Portaldot chain ${network.chainId} block ${block} via ${PORTALDOT_EVM_RPC}`);
   console.log(`[RELAYER] Relayer ${wallet.address} (${formatEther(balance)} tPOT); watching vault ${vault}`);
   if (balance === 0n) console.warn('[RELAYER] WARNING: relayer balance is 0 — settlements will fail until it is funded');
+  const minBalance = BigInt(Math.floor(Number(process.env['STATUS_MIN_BALANCE_TPOT'] ?? 2))) * 10n ** 18n;
+  if (balance < minBalance) void notify(`⚠️ Katalyst relayer gas balance is low: ${formatEther(balance)} tPOT (${wallet.address})`);
 
   // Serialize settlement: one relayer account => one tx nonce stream.
   const seen = new Set<number>();
@@ -99,6 +102,11 @@ async function main(): Promise<void> {
           `in block ${receipt.blockNumber} (tx ${receipt.txHash})`,
       );
       console.log(`[RELAYER] Explorer: ${receipt.explorerUrl}`);
+      void notify(
+        verdict.approved
+          ? `✅ Katalyst intent #${intent.nonce} executed · ${formatEther(BigInt(intent.amount))} tPOT · ${verdict.allocations.map((a) => `${a.percentage}% → ${a.target_pool.slice(0, 6)}…${a.target_pool.slice(-4)} (${a.eco_score})`).join(', ')} · ${verdict.validatorsAgreed}/${verdict.validatorsTotal} validators agreed · ${receipt.explorerUrl}`
+          : `↩️ Katalyst intent #${intent.nonce} rejected and refunded · ${verdict.reason ?? 'no reason'} · ${receipt.explorerUrl}`,
+      );
       store.upsert(intent.nonce, {
         ...base,
         phase: verdict.approved ? 'executed' : 'rejected',
@@ -124,6 +132,7 @@ async function main(): Promise<void> {
       const message = err instanceof Error ? err.message : String(err);
       store.upsert(intent.nonce, { user: intent.user, amount: intent.amount, prompt: intent.prompt, phase: 'failed', error: message });
       console.error(`[RELAYER] Intent #${intent.nonce} failed:`, message);
+      void notify(`⚠️ Katalyst intent #${intent.nonce} FAILED to process: ${message.slice(0, 200)}`);
     }
   };
 

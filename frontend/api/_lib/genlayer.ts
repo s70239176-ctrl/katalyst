@@ -24,6 +24,13 @@ export const genlayerChainName = (): string => optionalEnv('GENLAYER_CHAIN') ?? 
 export const genlayerContract = (): string => env('GENLAYER_CONTRACT_ADDRESS', 'VITE_GENLAYER_CONTRACT');
 export const genlayerTxUrl = (hash: string): string => `${GENLAYER_EXPLORER}/tx/${hash}`;
 
+/** Cheap liveness probe: read a view on the solver. Resolves to the admin string; throws if unreachable. */
+export async function pingGenLayer(): Promise<string> {
+  const { client, contract } = getClient();
+  const raw = await client.readContract({ address: contract, functionName: 'get_admin', args: [] });
+  return String(raw);
+}
+
 /** Submit `adjudicate_intent` and return the GenLayer transaction hash without waiting for consensus. */
 export async function submitAdjudication(nonce: number, prompt: string, amountWei: bigint): Promise<string> {
   const { client, contract } = getClient();

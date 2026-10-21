@@ -16,6 +16,7 @@ const ABI = [
   'function rejectIntent(uint64 nonce, address user, uint256 amount, bytes32 promptHash)',
   'function pending(uint64 nonce) view returns (bytes32)',
   'function relayer() view returns (address)',
+  'function intentCount() view returns (uint64)',
   'event IntentDeposited(uint64 indexed nonce, address indexed user, uint256 amount, string prompt)',
   'event IntentExecuted(uint64 indexed nonce, address indexed user, uint256 totalAmount)',
   'event IntentRejected(uint64 indexed nonce, address indexed user, uint256 refunded)',
