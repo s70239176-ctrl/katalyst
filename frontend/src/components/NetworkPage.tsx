@@ -78,7 +78,14 @@ export function NetworkPage({ refreshKey }: { refreshKey: number }) {
           ) : (
             health === null && (
               <p className="mt-3 text-sm text-muted">
-                The relayer API at <span className="mono">{RELAYER_API}</span> is not reachable. On-chain data above is unaffected; consensus details and live status need the relayer.
+                {RELAYER_API ? (
+                  <>
+                    The relayer API at <span className="mono">{RELAYER_API}</span> is not reachable.
+                  </>
+                ) : (
+                  'No relayer API is configured for this deployment.'
+                )}{' '}
+                On-chain data above is unaffected; consensus details and live status need the relayer.
               </p>
             )
           )}

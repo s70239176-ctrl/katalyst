@@ -58,7 +58,7 @@ async function main(): Promise<void> {
       balanceWei: () => balanceOfWei(wallet.address),
       queueLength: () => queued,
     },
-    Number(process.env['RELAYER_API_PORT'] ?? 8788),
+    Number(process.env['RELAYER_API_PORT'] ?? process.env['PORT'] ?? 8788),
   );
 
   const handle = async (intent: DepositedIntent): Promise<void> => {
