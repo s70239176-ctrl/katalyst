@@ -14,7 +14,12 @@
     "deploy:evm": "node scripts/deploy_evm.mjs --send",
     "fund:info": "node scripts/fund_evm.mjs",
     "fuzz:evm": "node scripts/fuzz_evm.mjs",
-    "test:solver": "python -m unittest discover -s ../genlayer/tests -v"
+    "test:solver": "python -m unittest discover -s ../genlayer/tests -v",
+    "compile:v2": "node scripts/compile_v2.mjs",
+    "test:v2": "node scripts/test_v2.mjs",
+    "fuzz:v2": "node scripts/fuzz_v2.mjs",
+    "estimate:v2": "node scripts/deploy_v2.mjs",
+    "deploy:v2": "node scripts/deploy_v2.mjs --send"
   },
   "dependencies": {
     "dotenv": "^18.0.8",

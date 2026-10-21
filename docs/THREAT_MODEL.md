@@ -54,6 +54,13 @@ vault balance equals the sum of pending deposits, reverted calls change nothing,
 | R11 | **Key handling** | Relayer key lives only in server env (Vercel/host secrets), never in the browser bundle; `.env` files are git-ignored and scanned before commits | Immutable `relayer`/`owner` mean rotation = redeploy |
 | R12 | **Front-end tampering / supply chain** | Wallet signs only `depositIntent` / `cancelIntent`; pinned dependency versions; security headers | Standard web risks apply |
 
+## v2 contracts (implemented and tested; not yet deployed)
+
+`docs/V2_DESIGN.md` describes the mitigations that address the "planned" items above: **permissionless `refundExpired`** (R3),
+a **settlement delay with owner veto** that bounds a compromised relayer (R2), **pause, two-step ownership and relayer
+rotation** (R4, R11), an **opt-in route lock**, an immutable **fee** and **deposit cap**, and a **PoolHub** holding real,
+withdrawable positions. A relayer quorum is deliberately left for when there are independent operators.
+
 ## Out of scope / known limitations
 
 - Not audited. Not for mainnet funds as-is.

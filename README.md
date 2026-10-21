@@ -44,6 +44,10 @@ flowchart LR
 - **Commitment-bound settlement:** the relayer cannot change who is paid, how much, or the prompt. See
   [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) (including what is *not* guaranteed).
 
+**v2 contracts (built and tested, not yet deployed)** — permissionless refunds after a timeout, pause / two-step ownership / relayer
+rotation, an immutable fee and deposit cap, an opt-in route lock, real withdrawable pool positions (`PoolHub`), and an optimistic
+settlement delay with owner veto. See [docs/V2_DESIGN.md](docs/V2_DESIGN.md).
+
 **Infrastructure**
 - **Runs entirely on Vercel:** the relayer ships as Vercel Functions driven by the dApp; an always-on Docker relayer is
   available for unattended settlement. See [DEPLOY.md](DEPLOY.md).
@@ -78,6 +82,8 @@ npm run test:solver          # 31 solver + example unit tests (Python)
 npm run fund:info            # prints each EVM key's mapped native account — send tPOT THERE
 npm run estimate:evm         # balance + gas/deposit estimate, sends nothing
 npm run deploy:evm           # deploy; writes VAULT_CONTRACT_ADDRESS into .env
+npm run compile:v2 && npm run test:v2 && npm run fuzz:v2   # v2 contracts: 11 scenario tests + randomised invariants
+npm run estimate:v2          # real-chain cost estimate for v2 (sends nothing)
 
 # 2. GenLayer solver (Studionet is gasless)
 node scripts/deploy_genlayer.mjs
