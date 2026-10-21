@@ -127,6 +127,16 @@ export function setActiveChain(key: string): void {
 export const vaultAddress = (): string => activeChain().vault;
 export const vaultDeployBlock = (): number => activeChain().deployBlock;
 export const rpcUrl = (): string => activeChain().rpcUrl;
+
+/**
+ * RPC endpoint the dApp reads through. With the serverless relayer (no separate API configured) reads go through the
+ * same-origin /api/rpc proxy, which avoids the public RPC's CORS failures under throttling and retries transient errors.
+ * Wallets still talk to the chain's own RPC directly.
+ */
+export function readRpcUrl(c: ChainEntry = activeChain()): string {
+  const serverless = !(import.meta.env.VITE_RELAYER_API ?? (import.meta.env.DEV ? 'http://localhost:8788' : ''));
+  return serverless && typeof window !== 'undefined' ? `${window.location.origin}/api/rpc?chain=${encodeURIComponent(c.key)}` : c.rpcUrl;
+}
 export const chainId = (): number => activeChain().chainId;
 export const tokenSymbol = (): string => activeChain().symbol;
 

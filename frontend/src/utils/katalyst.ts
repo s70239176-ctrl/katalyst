@@ -1,6 +1,6 @@
 /** The dApp's SDK instances (one per settlement chain), configured from Vite env. */
 import { createKatalyst, type Katalyst } from '../sdk';
-import { activeChain } from './chains';
+import { activeChain, readRpcUrl } from './chains';
 import { GENLAYER_CONTRACT, previewKey } from './genlayer';
 
 /** Earlier solver deployments, comma separated. Only chains with `legacyNonceRefs` consult them. */
@@ -17,7 +17,7 @@ export function getKatalyst(): Katalyst {
   if (!k) {
     k = createKatalyst({
       vault: c.vault,
-      rpcUrl: c.rpcUrl,
+      rpcUrl: readRpcUrl(c),
       chainId: c.chainId,
       deployBlock: c.deployBlock,
       version: c.version,

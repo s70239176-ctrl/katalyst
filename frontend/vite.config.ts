@@ -14,13 +14,18 @@ function localApi(): Plugin {
       server.middlewares.use('/api', async (req, res) => {
         try {
           const name = (req.url ?? '').split('?')[0]!.replace(/^\/+/, '').replace(/[^a-z0-9_-]/gi, '');
-          const mod = (await server.ssrLoadModule(`/api/${name}.ts`)) as { GET?: (r: Request) => Promise<Response> };
-          if (!mod.GET) {
+          const mod = (await server.ssrLoadModule(`/api/${name}.ts`)) as { GET?: (r: Request) => Promise<Response>; POST?: (r: Request) => Promise<Response> };
+          const post = req.method === 'POST';
+          const handler = post ? mod.POST : mod.GET;
+          if (!handler) {
             res.statusCode = 404;
             res.end('{"error":"not found"}');
             return;
           }
-          const response = await mod.GET(new Request(`http://localhost${req.originalUrl ?? req.url ?? ''}`));
+          let body = '';
+          if (post) for await (const chunk of req) body += String(chunk);
+          const url = `http://localhost${req.originalUrl ?? req.url ?? ''}`;
+          const response = await handler(post ? new Request(url, { method: 'POST', body }) : new Request(url));
           res.statusCode = response.status;
           response.headers.forEach((value, key) => res.setHeader(key, value));
           res.end(await response.text());

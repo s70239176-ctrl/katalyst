@@ -19,7 +19,7 @@ import {
 } from 'ethers';
 import { encodeAddress } from '@polkadot/util-crypto';
 import { hexToU8a, u8aConcat } from '@polkadot/util';
-import { activeChain, blockUrl, chainId, rpcUrl, vaultAddress, vaultDeployBlock } from './chains';
+import { activeChain, blockUrl, chainId, readRpcUrl, rpcUrl, vaultAddress, vaultDeployBlock } from './chains';
 import { HUB_ABI, executedAmount, feeOf, isV2, settledEventNames, statusOfEvent, vaultAbi } from './vaultAbi';
 import {
   SS58_PREFIX,
@@ -41,7 +41,7 @@ export function getReadProvider(): JsonRpcProvider {
   const c = activeChain();
   let p = readProviders.get(c.key);
   if (!p) {
-    p = new JsonRpcProvider(c.rpcUrl, c.chainId, { staticNetwork: true, batchMaxCount: 1 });
+    p = new JsonRpcProvider(readRpcUrl(c), c.chainId, { staticNetwork: true, batchMaxCount: 1 });
     readProviders.set(c.key, p);
   }
   return p;
