@@ -10,3 +10,4 @@ relayer/data/
 .claude/
 .env.*
 !.env.example
+demo/*.mp4

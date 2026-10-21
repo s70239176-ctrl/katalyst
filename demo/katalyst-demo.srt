@@ -1,0 +1,117 @@
+1
+00:00:00,350 --> 00:00:05,719
+Katalyst turns a plain-language intent into a verified
+settlement on Portaldot.
+
+2
+00:00:05,939 --> 00:00:10,993
+Today I will run one for real, live on the Portaldot V3
+testnet.
+
+3
+00:00:12,243 --> 00:00:15,132
+Intent in, settlement out.
+
+4
+00:00:15,352 --> 00:00:24,551
+You say what you want. GenLayer validators agree on the route.
+A vault on Portaldot checks that route and pays the pools.
+
+5
+00:00:24,771 --> 00:00:29,480
+The figures on this page are read straight from the vault's
+events on Portaldot.
+
+6
+00:00:30,530 --> 00:00:37,429
+In the app, I describe my intent: maximize yield, but only
+A-Tier carbon pools.
+
+7
+00:00:37,649 --> 00:00:42,874
+Before depositing anything, I can ask the validators for a
+free preview.
+
+8
+00:00:43,094 --> 00:00:49,073
+Two pools qualify, and the lower rated pool is excluded, with
+the reason shown.
+
+9
+00:00:50,123 --> 00:00:57,462
+I lock the route, so the vault pays exactly this route or
+nothing, and deposit three tenths of a testnet POT.
+
+10
+00:00:57,682 --> 00:01:02,081
+This is a real transaction, signed and sent to Portaldot.
+
+11
+00:01:03,723 --> 00:01:09,192
+Now GenLayer's validators reach consensus. Most of them agree.
+
+12
+00:01:09,412 --> 00:01:14,301
+The relayer proposes the route to the vault, but cannot move
+funds yet.
+
+13
+00:01:14,521 --> 00:01:22,935
+A safety delay starts. The vault owner can veto during it, and
+a guardian checks the route against the validators' verdict.
+
+14
+00:01:23,155 --> 00:01:27,110
+When the delay ends, the vault settles on Portaldot.
+
+15
+00:01:30,480 --> 00:01:34,404
+Here is that settlement block in Portaldot's own explorer.
+
+16
+00:01:34,624 --> 00:01:41,933
+It is a real Ethereum style transaction, executed on the
+Portaldot testnet and sent to our vault contract.
+
+17
+00:01:43,280 --> 00:01:48,865
+Now the part that matters most. Do not trust us, verify.
+
+18
+00:01:49,085 --> 00:02:00,973
+This page rebuilds the story from Portaldot events and the
+validators' own records: the deposit, the consensus, the route
+that was paid, the fee, the route lock and the safety delay.
+
+19
+00:02:01,193 --> 00:02:03,338
+Every check passes.
+
+20
+00:02:04,495 --> 00:02:11,574
+We also tested a failure on testnet. A relayer proposed a
+route the validators never chose.
+
+21
+00:02:11,794 --> 00:02:18,333
+The guardian caught it during the delay, the owner vetoed it,
+and the depositor got every token back.
+
+22
+00:02:18,553 --> 00:02:22,742
+Verify marks it: the safety delay caught a bad route.
+
+23
+00:02:24,005 --> 00:02:31,934
+The vault's rules, its fee, cap, timeout and delay, are fixed
+at deployment. Nobody can change them.
+
+24
+00:02:33,175 --> 00:02:39,814
+Katalyst. GenLayer decides, Portaldot settles, and anyone can
+verify.
+
+25
+00:02:40,034 --> 00:02:47,678
+It is live on testnet today and open source. Next come an
+audit, a relayer quorum, and mainnet.
