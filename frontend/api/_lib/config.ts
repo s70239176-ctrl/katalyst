@@ -37,6 +37,20 @@ export function optionalEnv(...names: string[]): string | undefined {
 export const GENLAYER_EXPLORER = optionalEnv('GENLAYER_EXPLORER_URL') ?? 'https://explorer-studio.genlayer.com';
 const PORTALDOT_EXPLORER = 'https://node-console.portaldot.dev/#/explorer/query/{block}';
 
+/**
+ * The Portaldot node console opens on the *live* network by default, whose block numbers are unrelated to the testnet's.
+ * Point links at the testnet node (`?rpc=`) so a block number from the EVM RPC opens the same block in the explorer.
+ */
+const TESTNET_NODE = 'wss%3A%2F%2Ftest-node-v3.portaldot.dev';
+export function withTestnetNode(url: string): string {
+  if (!url.includes('node-console.portaldot.dev') || /[?&]rpc=/.test(url)) return url;
+  const i = url.indexOf('#');
+  const base = i < 0 ? url : url.slice(0, i);
+  const hash = i < 0 ? '' : url.slice(i);
+  return `${base}${base.includes('?') ? '&' : '?'}rpc=${TESTNET_NODE}${hash}`;
+}
+
+
 // ---- Chains --------------------------------------------------------------------------
 
 /** One settlement chain: a vault, how to reach it and which key relays for it. */
@@ -79,7 +93,7 @@ export function chains(): ChainCfg[] {
         vault: String(c['vault']),
         version: Number(c['version'] ?? 1) === 2 ? 2 : 1,
         deployBlock: Number(c['deployBlock'] ?? 0),
-        explorerBlockUrl: String(c['explorerBlockUrl'] ?? ''),
+        explorerBlockUrl: withTestnetNode(String(c['explorerBlockUrl'] ?? '')),
         relayerKeyEnv: String(c['relayerKeyEnv'] ?? 'RELAYER_PRIVATE_KEY'),
       };
     });
@@ -93,7 +107,7 @@ export function chains(): ChainCfg[] {
         vault: env('VAULT_CONTRACT_ADDRESS', 'VITE_VAULT_ADDRESS'),
         version: 1,
         deployBlock: Number(optionalEnv('VAULT_DEPLOY_BLOCK', 'VITE_VAULT_DEPLOY_BLOCK') ?? 0),
-        explorerBlockUrl: PORTALDOT_EXPLORER,
+        explorerBlockUrl: withTestnetNode(PORTALDOT_EXPLORER),
         relayerKeyEnv: 'RELAYER_PRIVATE_KEY',
       },
     ];

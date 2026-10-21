@@ -39,6 +39,20 @@ export interface ChainEntry {
 
 const PORTALDOT_EXPLORER = 'https://node-console.portaldot.dev/#/explorer/query/{block}';
 
+/**
+ * The Portaldot node console opens on the *live* network by default, whose block numbers are unrelated to the testnet's.
+ * Point links at the testnet node (`?rpc=`) so a block number from the EVM RPC opens the same block in the explorer.
+ */
+const TESTNET_NODE = 'wss%3A%2F%2Ftest-node-v3.portaldot.dev';
+export function withTestnetNode(url: string): string {
+  if (!url.includes('node-console.portaldot.dev') || /[?&]rpc=/.test(url)) return url;
+  const i = url.indexOf('#');
+  const base = i < 0 ? url : url.slice(0, i);
+  const hash = i < 0 ? '' : url.slice(i);
+  return `${base}${base.includes('?') ? '&' : '?'}rpc=${TESTNET_NODE}${hash}`;
+}
+
+
 function fromEnv(): ChainEntry[] {
   const raw = import.meta.env.VITE_CHAINS;
   if (raw && raw.trim()) {
@@ -56,7 +70,7 @@ function fromEnv(): ChainEntry[] {
             version: Number(c['version'] ?? 1) === 2 ? 2 : 1,
             hub: String(c['hub'] ?? ''),
             deployBlock: Number(c['deployBlock'] ?? 0),
-            explorerBlockUrl: String(c['explorerBlockUrl'] ?? ''),
+            explorerBlockUrl: withTestnetNode(String(c['explorerBlockUrl'] ?? '')),
             symbol: String(c['symbol'] ?? 'ETH'),
             portaldotNative: portaldot,
             legacyNonceRefs: c['legacyNonceRefs'] === true,
@@ -80,7 +94,7 @@ function fromEnv(): ChainEntry[] {
       version: 1,
       hub: '',
       deployBlock: Number(import.meta.env.VITE_VAULT_DEPLOY_BLOCK ?? 0),
-      explorerBlockUrl: PORTALDOT_EXPLORER,
+      explorerBlockUrl: withTestnetNode(PORTALDOT_EXPLORER),
       symbol: 'tPOT',
       portaldotNative: true,
       legacyNonceRefs: true,

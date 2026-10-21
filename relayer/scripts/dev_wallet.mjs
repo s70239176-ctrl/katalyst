@@ -9,7 +9,8 @@ import { JsonRpcProvider, Wallet, toBeHex } from 'ethers';
 const CHAIN_ID = 420420777;
 const provider = new JsonRpcProvider(process.env.PORTALDOT_EVM_RPC, CHAIN_ID, { staticNetwork: true, batchMaxCount: 1 });
 const wallet = new Wallet(process.env.DEPLOYER_PRIVATE_KEY, provider);
-const ORIGIN = 'http://localhost:5173';
+// Comma-separated list of page origins allowed to use this wallet (default: the local dev server only).
+const ORIGINS = (process.env.DEV_WALLET_ORIGINS ?? 'http://localhost:5173').split(',').map((o) => o.trim());
 
 async function handle({ method, params = [] }) {
   switch (method) {
@@ -29,7 +30,9 @@ async function handle({ method, params = [] }) {
 }
 
 createServer(async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', ORIGIN);
+  const origin = ORIGINS.includes(req.headers.origin ?? '') ? req.headers.origin : ORIGINS[0];
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Headers', 'content-type');
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
   if (req.method === 'OPTIONS') { res.writeHead(204).end(); return; }
@@ -41,4 +44,4 @@ createServer(async (req, res) => {
   } catch (e) {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ error: { code: e.code ?? -32000, message: e.shortMessage ?? e.message, data: e.data } }));
   }
-}).listen(8787, '127.0.0.1', () => console.log(`[dev-wallet] ${wallet.address} on http://127.0.0.1:8787 (allowed origin ${ORIGIN})`));
+}).listen(8787, '127.0.0.1', () => console.log(`[dev-wallet] ${wallet.address} on http://127.0.0.1:8787 (allowed origins ${ORIGINS.join(', ')})`));

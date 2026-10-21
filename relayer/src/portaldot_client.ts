@@ -81,7 +81,9 @@ export function encodeEco(label: string): string {
 
 export function explorerUrlForBlock(blockNumber: number): string {
   const base = (process.env['PORTALDOT_EXPLORER_URL']?.trim() || 'https://node-console.portaldot.dev').replace(/\/$/, '');
-  return `${base}/#/explorer/query/${blockNumber}`;
+  // The console defaults to the live network; the testnet's blocks need its own node.
+  const node = base.includes('node-console.portaldot.dev') ? '?rpc=wss%3A%2F%2Ftest-node-v3.portaldot.dev' : '';
+  return `${base}/${node}#/explorer/query/${blockNumber}`;
 }
 
 /** True while the intent's commitment is still stored, i.e. not yet executed/rejected/cancelled. */
