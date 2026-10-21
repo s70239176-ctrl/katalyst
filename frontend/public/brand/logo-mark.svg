@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Katalyst">
+  <title>Katalyst</title>
+  <path d="M12 8h12v48H12z" fill="#c4ff42"/>
+  <path d="M24 36 52 8H40L24 24z" fill="#c4ff42"/>
+  <path d="M24 28 52 56H40L24 40z" fill="#35caff"/>
+</svg>

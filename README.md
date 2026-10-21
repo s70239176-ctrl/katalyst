@@ -1,3 +1,5 @@
+<p align="center"><img src="frontend/public/og.png" alt="Katalyst: intent in, settlement out" width="720" /></p>
+
 # Katalyst — cross-chain intent settlement for Portaldot
 
 **GenLayer decides, Portaldot settles — and you can verify every decision yourself.**

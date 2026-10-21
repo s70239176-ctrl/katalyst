@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Katalyst</title>
+  <rect width="64" height="64" rx="14" fill="#05090c"/>
+  <rect x="1" y="1" width="62" height="62" rx="13" fill="none" stroke="#2a3b46" stroke-width="2"/>
+  <g transform="translate(8 8) scale(.75)">
+    <path d="M12 8h12v48H12z" fill="#c4ff42"/>
+    <path d="M24 36 52 8H40L24 24z" fill="#c4ff42"/>
+    <path d="M24 28 52 56H40L24 40z" fill="#35caff"/>
+  </g>
+</svg>

@@ -22,10 +22,10 @@ const Arrow = () => (
   </svg>
 );
 
-function Logo({ size = 22 }: { size?: number }) {
+function Logo({ size = 24 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M3 2h5v8.2L15.2 2H22l-9 10 9.4 10H15.6L8 13.8V22H3z" fill="#c4ff42" />
+    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M12 8h12v48H12z" fill="#c4ff42" /><path d="M24 36 52 8H40L24 24z" fill="#c4ff42" /><path d="M24 28 52 56H40L24 40z" fill="#35caff" />
     </svg>
   );
 }
