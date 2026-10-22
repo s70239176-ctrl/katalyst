@@ -54,6 +54,46 @@ sequenceDiagram
   Relayer->>User: forward the storage-deposit refund
 ```
 
+## v2: safety delay, veto and pool positions (current testnet vault)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant V as KatalystVaultV2 (Portaldot)
+  participant R as Relayer (Vercel Functions)
+  participant G as GenLayer solver
+  participant H as PoolHub (Portaldot)
+  participant W as Guardian + owner
+
+  U->>V: depositIntent(prompt, routeLock?) + tPOT
+  Note over V: stores ONE commitment hash (user, amount, prompt, lock, deadline)
+  R->>G: adjudicate(prompt)
+  G-->>R: route agreed by validator consensus
+  R->>V: executeAdjudicatedIntent(route)
+  Note over V: validates totals, lock; records a PROPOSAL (delay 60 s)
+  W->>G: re-derive the verdict
+  alt proposal differs from the verdict
+    W->>V: vetoSettlement (owner)
+    V-->>U: full refund
+  else matches, delay over
+    R->>V: finalizeSettlement (anyone may)
+    V->>H: depositFor(pool, user) per leg, minus the fixed fee
+    H-->>U: withdrawable position per pool
+  end
+  Note over U,V: the depositor can cancel any time; after the timeout anyone can refundExpired
+```
+
+What the v2 contract adds over v1, and why:
+
+- **Settlement delay with veto** bounds a compromised or buggy relayer: it can no longer move money instantly, and a watcher has a window to stop a route that does not match the validators' verdict.
+- **Route lock** (opt-in) binds the deposit to the route the user previewed: the vault pays exactly that route or nothing.
+- **Permissionless refund after a timeout** means a relayer outage can never strand funds, and the depositor needs no gas for it.
+- **PoolHub** keeps a per-user, per-pool position that the user can withdraw at any time, even while the vault is paused.
+- **Pause, two-step ownership, relayer rotation, immutable fee and cap** for operations and incident response.
+
+Details and the deployment record are in [V2_DESIGN.md](V2_DESIGN.md); the guarantees and residual risks are in [THREAT_MODEL.md](THREAT_MODEL.md).
+
 ## Design decisions (and why)
 
 **The model never chooses addresses or percentages.** It only extracts constraints (tier, minimum APY, max-yield,
@@ -73,16 +113,16 @@ Functions driven by the dApp's polling, or as an always-on daemon, with the same
 and GenLayer's transaction records, because the public RPC prunes old transactions but keeps logs.
 
 **Storage-refund pass-through.** The chain refunds a freed storage slot's deposit to whoever freed it (the relayer). The
-relayer forwards it to the depositor, cutting a user's overhead from ≈7.7 to ≈0.3 tPOT per intent.
+relayer forwards it to the depositor, cutting a user's overhead from ≈7.7 to ≈0.3 tPOT per intent (v1). In v2 the freed deposits are used by the settlement itself to create the user's hub-position slots, which the user recovers when they withdraw; see [V2_DESIGN.md](V2_DESIGN.md).
 
 ## Repository map
 
 | Path | What |
 | --- | --- |
-| `contracts/evm/` | `KatalystVault.sol` — the deployed vault |
+| `contracts/evm/` | `KatalystVault.sol` (v1) and `v2/` (`KatalystVaultV2.sol`, `PoolHub.sol`), both deployed on the testnet |
 | `contracts/vault/` | ink! 4.3 variant (reference; costlier to deploy) |
 | `genlayer/` | Intelligent contract + unit tests |
-| `relayer/` | Always-on relayer, deploy/test/fuzz scripts |
-| `frontend/` | dApp (`src/`), SDK (`src/sdk/`), serverless relayer (`api/`) |
+| `relayer/` | Always-on relayer, deploy/test/fuzz scripts, guardian |
+| `frontend/` | landing page and dApp (`src/`), SDK (`src/sdk/`), serverless relayer and RPC proxy (`api/`) |
 | `cli/` | `katalyst` command line |
 | `docs/` | This folder |

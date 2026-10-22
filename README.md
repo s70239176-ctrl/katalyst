@@ -21,6 +21,9 @@ flowchart LR
   U -. "free preview / independent verify" .-> S
 ```
 
+> **Submission links:** [Testnet evidence](docs/TESTNET_EVIDENCE.md) (contracts and transaction hashes) · [Development log](docs/DEVLOG.md) ·
+> [Architecture](docs/ARCHITECTURE.md) · [Demo video](demo/README.md) · [Live app](https://katalyst-ashen.vercel.app/) · [Roadmap](#roadmap-the-next-23-months-to-mainnet)
+
 ## Live on testnet
 
 | | |
