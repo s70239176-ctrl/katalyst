@@ -84,7 +84,7 @@ async function advance(chain: ChainCfg, intent: Intent, base: Record<string, unk
     return json({ ...base, phase: 'adjudicating', glTx: hash });
   }
 
-  // 3. Verdict agreed: settle. The vault re-validates the route on-chain.
+  // 3. Verdict agreed: settle. The vault re-validates the route onchain.
   const verdict: Verdict = parseVerdict(raw, nonce, ref);
   const genlayer = glHash && st?.kind === 'ok' ? glInfo(glHash, st) : undefined;
   const verdictOut = { approved: verdict.approved, ...(verdict.reason ? { reason: verdict.reason } : {}), allocations: verdict.allocations, trace: verdict.trace };

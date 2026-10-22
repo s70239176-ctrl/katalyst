@@ -36,16 +36,16 @@ const Icon = ({ children }: { children: ReactNode }) => (
   </svg>
 );
 
-const fmtTime = (unix: number | null): string => (unix === null ? '—' : `~${new Date(unix * 1000).toLocaleTimeString('en-GB', { hour12: false })}`);
+const fmtTime = (unix: number | null): string => (unix === null ? 'n/a' : `~${new Date(unix * 1000).toLocaleTimeString('en-GB', { hour12: false })}`);
 
 const fmtDuration = (sec: number | null): string => {
-  if (sec === null) return '—';
+  if (sec === null) return 'n/a';
   if (sec < 60) return `~${Math.round(sec)}s`;
   return `~${Math.floor(sec / 60)}m ${Math.round(sec % 60)}s`;
 };
 
 function routeText(r: SettlementRow): string {
-  if (!r.route || r.route.length === 0) return '—';
+  if (!r.route || r.route.length === 0) return 'None';
   return r.route.map((l) => `${poolLabel(l.pool)} ${l.pct}%`).join(' · ');
 }
 
@@ -112,20 +112,20 @@ export default function Landing({ onNavigate }: { onNavigate: Navigate }) {
 
   const latest = data?.rows.find((r) => r.status === 'Executed');
   const meta: FlowMeta = {
-    hash: latest?.txHash ? shortHash(latest.txHash) : '—',
-    id: latest ? `#${latest.nonce}` : '—',
-    route: latest ? routeText(latest).split(' · ')[0] ?? '—' : '—',
+    hash: latest?.txHash ? shortHash(latest.txHash) : 'n/a',
+    id: latest ? `#${latest.nonce}` : 'n/a',
+    route: latest ? routeText(latest).split(' · ')[0] ?? 'n/a' : 'n/a',
     network: chain.name,
     settledIn: fmtDuration(latest?.elapsedSec ?? null),
   };
 
-  const successPct = data && data.protocolOutcomes > 0 ? `${((data.routed / data.protocolOutcomes) * 100).toFixed(1)}%` : '—';
+  const successPct = data && data.protocolOutcomes > 0 ? `${((data.routed / data.protocolOutcomes) * 100).toFixed(1)}%` : 'n/a';
   const netLabel = net === 'online' ? 'Testnet · online' : net === 'offline' ? 'Unreachable' : 'Connecting…';
 
   const metrics: Array<{ label: string; value: string; hint: string; icon: ReactNode }> = [
     {
       label: 'Intents processed',
-      value: data ? data.intents.toLocaleString('en-US') : '—',
+      value: data ? data.intents.toLocaleString('en-US') : 'n/a',
       hint: 'recent, onchain',
       icon: (
         <Icon>
@@ -147,7 +147,7 @@ export default function Landing({ onNavigate }: { onNavigate: Navigate }) {
     },
     {
       label: 'Median settlement',
-      value: data?.medianSec !== null && data?.medianSec !== undefined ? fmtDuration(data.medianSec) : '—',
+      value: data?.medianSec !== null && data?.medianSec !== undefined ? fmtDuration(data.medianSec) : 'n/a',
       hint: 'deposit to payout',
       icon: (
         <Icon>
@@ -158,7 +158,7 @@ export default function Landing({ onNavigate }: { onNavigate: Navigate }) {
     },
     {
       label: 'Active routes',
-      value: routes !== null ? String(routes) : '—',
+      value: routes !== null ? String(routes) : 'n/a',
       hint: chain.version === 2 ? 'pools in the hub' : 'v2 only',
       icon: (
         <Icon>
@@ -217,7 +217,7 @@ export default function Landing({ onNavigate }: { onNavigate: Navigate }) {
               <span>Settlement out.</span>
             </h1>
             <p className="kt-lede">
-              Katalyst turns user intents into verifiable execution across PortalDot — connecting you to the right liquidity, execution and settlement, with independent verification at every step.
+              Katalyst turns user intents into verifiable execution across PortalDot. It connects you to the right liquidity, execution and settlement, with independent verification at every step.
             </p>
             <div className="kt-actions">
               <button type="button" className="kt-btn primary lg" onClick={() => scrollTo('how')}>
@@ -331,7 +331,7 @@ export default function Landing({ onNavigate }: { onNavigate: Navigate }) {
                             </svg>
                           </a>
                         ) : (
-                          '—'
+                          'n/a'
                         )}
                       </td>
                     </tr>
@@ -370,7 +370,7 @@ export default function Landing({ onNavigate }: { onNavigate: Navigate }) {
               <div className="num">02</div>
               <h3>Execution layer</h3>
             </div>
-            <p>GenLayer validators agree on a route; deterministic code allocates it and the vault re-checks it onchain before paying the pools.</p>
+            <p>GenLayer validators agree on a route; deterministic code allocates it and the vault checks it again onchain before paying the pools.</p>
             <a className="more" href={DOC('V2_DESIGN.md')} target="_blank" rel="noreferrer noopener">
               Learn more →
             </a>

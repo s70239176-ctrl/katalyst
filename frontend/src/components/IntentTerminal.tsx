@@ -192,7 +192,7 @@ export function IntentTerminal({
             Protocol fee <span className="text-fg">{formatPot(policy.feeWei, 4)} {tokenSymbol()}</span>, only if the relayer settles or rejects
           </li>
           <li>
-            Per-deposit cap <span className="text-fg">{policy.maxDepositWei > 0n ? `${formatPot(policy.maxDepositWei, 2)} ${tokenSymbol()}` : 'none'}</span>
+            Deposit cap <span className="text-fg">{policy.maxDepositWei > 0n ? `${formatPot(policy.maxDepositWei, 2)} ${tokenSymbol()}` : 'none'}</span>
           </li>
           <li>
             Safety delay <span className="text-fg">{policy.delaySeconds}s</span>, during which the vault owner can veto

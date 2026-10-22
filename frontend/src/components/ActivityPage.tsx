@@ -44,7 +44,7 @@ export function ActivityPage({ wallet, onConnect, onOpen, refreshKey }: Activity
     return (
       <div className="card">
         <EmptyState title="Connect a wallet to see your activity" action={<button type="button" className="btn btn-primary" onClick={onConnect}>Connect wallet</button>}>
-          Your history is read directly from on-chain vault events.
+          Your history is read directly from onchain vault events.
         </EmptyState>
       </div>
     );

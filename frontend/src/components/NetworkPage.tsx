@@ -74,7 +74,7 @@ export function NetworkPage({ refreshKey }: { refreshKey: number }) {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {stats ? (
           <>
-            <Stat label="Intents submitted" value={stats.deposits} hint="all time, on-chain" />
+            <Stat label="Intents submitted" value={stats.deposits} hint="all time, onchain" />
             <Stat label="Unique wallets" value={stats.uniqueUsers} />
             <Stat label="Volume deposited" value={`${formatPot(stats.volume, 2)}`} hint={`${tokenSymbol()}, all intents`} />
             <Stat
@@ -100,10 +100,10 @@ export function NetworkPage({ refreshKey }: { refreshKey: number }) {
             <dl className="mt-4 space-y-2 text-sm">
               <Line label="Account" value={<span className="mono">{health.relayer}</span>} />
               <Line label="Gas balance" value={`${Number(health.relayerBalance).toFixed(2)} ${tokenSymbol()}`} />
-              <Line label="Mode" value={health.mode === 'serverless' ? 'Serverless (Vercel Functions)' : 'Always-on relayer'} />
+              <Line label="Mode" value={health.mode === 'serverless' ? 'Serverless (Vercel Functions)' : 'Always on relayer'} />
               {health.queueLength !== undefined && <Line label="Queue" value={`${health.queueLength} in flight`} />}
               {health.uptimeSec !== undefined && <Line label="Uptime" value={`${Math.floor(health.uptimeSec / 60)} min`} />}
-              {health.lastSettledAt !== undefined && <Line label="Last settlement" value={health.lastSettledAt ? timeAgo(health.lastSettledAt) : '—'} />}
+              {health.lastSettledAt !== undefined && <Line label="Last settlement" value={health.lastSettledAt ? timeAgo(health.lastSettledAt) : 'n/a'} />}
               {health.relayerMatchesVault === false && (
                 <Line label="Key check" value={<Badge tone="bad">Relayer key does not match the vault</Badge>} />
               )}
@@ -118,7 +118,7 @@ export function NetworkPage({ refreshKey }: { refreshKey: number }) {
                 ) : (
                   'No relayer API is configured for this deployment.'
                 )}{' '}
-                On-chain data above is unaffected; consensus details and live status need the relayer.
+                Onchain data above is unaffected; consensus details and live status need the relayer.
               </p>
             )
           )}
@@ -156,7 +156,7 @@ export function NetworkPage({ refreshKey }: { refreshKey: number }) {
           <p className="mt-1 text-sm text-muted">Fixed when the vault was deployed. Nobody, including the owner, can change them.</p>
           <dl className="mt-4 grid gap-x-8 gap-y-2 text-sm md:grid-cols-2">
             <Line label="Protocol fee" value={`${formatPot(policy.feeWei, 4)} ${tokenSymbol()}`} />
-            <Line label="Per-deposit cap" value={policy.maxDepositWei > 0n ? `${formatPot(policy.maxDepositWei, 2)} ${tokenSymbol()}` : 'None'} />
+            <Line label="Deposit cap" value={policy.maxDepositWei > 0n ? `${formatPot(policy.maxDepositWei, 2)} ${tokenSymbol()}` : 'None'} />
             <Line label="Refund timeout" value={`${Math.round(policy.ttlSeconds / 60)} min`} />
             <Line label="Settlement delay (owner veto window)" value={`${policy.delaySeconds}s`} />
             <Line label="Owner" value={<span className="mono">{policy.owner}</span>} />

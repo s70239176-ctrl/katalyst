@@ -10,11 +10,11 @@ const ICON: Record<CheckStatus, { glyph: string; color: string }> = {
   pass: { glyph: '✓', color: 'var(--accent)' },
   fail: { glyph: '✕', color: 'var(--danger)' },
   warn: { glyph: '!', color: 'var(--warn)' },
-  skip: { glyph: '–', color: 'var(--subtle)' },
+  skip: { glyph: '·', color: 'var(--subtle)' },
 };
 
 const VERDICT: Record<ProofBundle['verdict'], { label: string; tone: 'ok' | 'bad' | 'warn' | 'neutral'; text: string }> = {
-  verified: { label: 'Verified', tone: 'ok', text: 'Every check passed against the on-chain evidence.' },
+  verified: { label: 'Verified', tone: 'ok', text: 'Every check passed against the onchain evidence.' },
   failed: { label: 'Failed', tone: 'bad', text: 'At least one check failed. Review the details below.' },
   pending: { label: 'Pending', tone: 'warn', text: 'This intent has not been settled yet.' },
   not_found: { label: 'Not found', tone: 'neutral', text: 'No deposit exists for this intent number.' },
@@ -34,7 +34,7 @@ interface VerifyPageProps {
   onNavigate: (page: 'verify' | 'receipt', nonce?: number) => void;
 }
 
-/** Re-derives an intent's outcome from independent on-chain evidence and shows each check. */
+/** Re-derives an intent's outcome from independent onchain evidence and shows each check. */
 export function VerifyPage({ initialNonce, onNavigate }: VerifyPageProps) {
   const [input, setInput] = useState(initialNonce ? String(initialNonce) : '');
   const [rerun, setRerun] = useState(false);
@@ -84,7 +84,7 @@ export function VerifyPage({ initialNonce, onNavigate }: VerifyPageProps) {
           Verify an intent
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Don't take our word for it. This page re-derives the outcome from the vault's on-chain events and the GenLayer validators' own records, then checks that they agree with each other. Nothing here comes from Katalyst's servers.
+          Don't take our word for it. This page rebuilds the outcome from the vault's onchain events and the GenLayer validators' own records, then checks that they agree with each other. Nothing here comes from Katalyst's servers.
         </p>
         <form
           className="mt-5 flex flex-wrap items-end gap-3"
@@ -111,7 +111,7 @@ export function VerifyPage({ initialNonce, onNavigate }: VerifyPageProps) {
         </form>
         <label className="mt-3 flex items-center gap-2 text-sm text-muted">
           <input type="checkbox" checked={rerun} onChange={(e) => setRerun(e.target.checked)} />
-          Also re-run the adjudication now and compare (takes a few seconds)
+          Also run the adjudication again now and compare (takes a few seconds)
         </label>
         {!katalystConfigured() && <p className="mt-3 text-sm text-warn">The vault address is not configured for this deployment.</p>}
       </section>

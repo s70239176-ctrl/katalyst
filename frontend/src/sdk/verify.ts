@@ -45,7 +45,7 @@ export interface ProofBundle {
 export interface VerifyOptions {
   /** Deposit block, if known: avoids scanning from deployment. */
   hintBlock?: number;
-  /** Also re-run the adjudication now and compare (informational: live data can legitimately change). */
+  /** Also run the adjudication again now and compare (informational: live data can legitimately change). */
   rerun?: boolean;
   /**
    * This vault's earliest intents were adjudicated by nonce-only solver deployments: also match those
@@ -166,10 +166,10 @@ export async function verifyIntent(
     const sameLock = !v2 || (tx.routeLock ?? ZERO).toLowerCase() === (deposit.routeLock ?? ZERO).toLowerCase();
     const sameExpiry = !v2 || tx.expiry === deposit.expiry;
     const bound = sameUser && sameLock && sameExpiry && tx.nonce === nonce && tx.amountWei === deposit.amountWei && tx.promptHash.toLowerCase() === deposit.promptHash.toLowerCase();
-    add('commitment', 'Settlement bound to the original deposit', bound ? 'pass' : 'fail', bound ? `User, amount, prompt hash${v2 ? ', route lock and deadline' : ''} in the settlement match the deposit. The vault only accepts a settlement that reproduces the deposit-time commitment.` : 'The settlement arguments do not match the deposit.');
+    add('commitment', 'Settlement bound to the original deposit', bound ? 'pass' : 'fail', bound ? `User, amount, prompt hash${v2 ? ', route lock and deadline' : ''} in the settlement match the deposit. The vault only accepts a settlement that reproduces the deposit time commitment.` : 'The settlement arguments do not match the deposit.');
   } else {
     const bound = eqAddr(settlement.user, deposit.user) && reconciled;
-    add('commitment', 'Settlement bound to the original deposit', bound ? 'pass' : 'fail', bound ? 'The settlement event names the same depositor and accounts for the full deposited amount; the vault emits it only after matching the deposit-time commitment.' : 'The settlement event does not match the deposit.');
+    add('commitment', 'Settlement bound to the original deposit', bound ? 'pass' : 'fail', bound ? 'The settlement event names the same depositor and accounts for the full deposited amount; the vault emits it only after matching the deposit time commitment.' : 'The settlement event does not match the deposit.');
   }
 
   // 4. GenLayer: did validators judge exactly this prompt, and did they agree?
@@ -206,7 +206,7 @@ export async function verifyIntent(
       const majority = adj.total > 0 && adj.agreed * 2 > adj.total;
       add('consensus', 'GenLayer validators agreed', ok && majority ? 'pass' : ok ? 'warn' : 'fail', `${adj.agreed}/${adj.total} validators voted agree; transaction status ${adj.status}.`);
       const same = adj.prompt === deposit.prompt && BigInt(adj.amountWei) === deposit.amountWei;
-      add('same_prompt', 'GenLayer judged the deposited prompt', same ? 'pass' : 'fail', same ? 'The prompt and amount sent to GenLayer are identical to the on-chain deposit.' : 'The prompt or amount sent to GenLayer differs from the deposit.');
+      add('same_prompt', 'GenLayer judged the deposited prompt', same ? 'pass' : 'fail', same ? 'The prompt and amount sent to GenLayer are identical to the onchain deposit.' : 'The prompt or amount sent to GenLayer differs from the deposit.');
     }
   } else {
     add('consensus', 'GenLayer validators agreed', 'skip', gl ? `Not applicable: the intent ended by ${settlement.kind === 'expired' ? 'timeout refund' : 'cancellation'}.` : 'GenLayer is not configured for this verification.');
@@ -282,7 +282,7 @@ export async function verifyIntent(
       const same = key(again) === key(verdict);
       add('reproducible', 'A fresh run reaches the same verdict', same ? 'pass' : 'warn', same ? 'Re-running the adjudication now gives the identical route.' : 'A fresh run differs. Pool APY or eco data may have changed since; this is informational.');
     } catch (err) {
-      add('reproducible', 'A fresh run reaches the same verdict', 'warn', `Could not re-run: ${err instanceof Error ? err.message : 'error'}.`);
+      add('reproducible', 'A fresh run reaches the same verdict', 'warn', `Could not run it again: ${err instanceof Error ? err.message : 'error'}.`);
     }
   }
 

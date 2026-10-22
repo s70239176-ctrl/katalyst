@@ -14,7 +14,7 @@ const SOURCES: Array<{ y: number; h: number; label: string; sub?: string; icon: 
     y: 56,
     h: 38,
     label: 'User intent',
-    sub: 'Plain-language prompt',
+    sub: 'Plain language prompt',
     icon: (
       <g fill="none" stroke="#a0b0bf" strokeWidth="1.2">
         <circle r="5" />
@@ -83,7 +83,7 @@ export function SettlementFlow({ meta }: { meta: FlowMeta }) {
       <svg viewBox="0 0 774 263" role="img" aria-labelledby="flow-title flow-desc" preserveAspectRatio="xMidYMid meet">
         <title id="flow-title">Live settlement flow</title>
         <desc id="flow-desc">
-          An intent arrives from a dApp, SDK, widget or CLI, is routed by Katalyst&apos;s validator-consensus engine, and settles onchain with a verifiable outcome.
+          An intent arrives from a dApp, SDK, widget or CLI, is routed by Katalyst&apos;s validator consensus engine, and settles onchain with a verifiable outcome.
         </desc>
         <defs>
           <pattern id="kt-grid" width="22" height="22" patternUnits="userSpaceOnUse">

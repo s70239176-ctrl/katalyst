@@ -347,12 +347,12 @@ export default function App() {
             {outcome.status === 'Executed'
               ? `Routed to ${outcome.route?.length ?? 0} pool${(outcome.route?.length ?? 0) === 1 ? '' : 's'}${outcome.fee ? ` · fee ${formatPot(outcome.fee, 4)} ${tokenSymbol()}` : ''}`
               : outcome.status === 'Rejected'
-                ? 'Rejected — deposit refunded'
+                ? 'Rejected, deposit refunded'
                 : outcome.status === 'Expired'
-                  ? 'Timed out — deposit refunded in full'
+                  ? 'Timed out, deposit refunded in full'
                   : outcome.status === 'Vetoed'
-                    ? 'Vetoed during the safety delay — deposit refunded in full'
-                    : 'Cancelled — deposit refunded'}{' '}
+                    ? 'Vetoed during the safety delay, deposit refunded in full'
+                    : 'Cancelled, deposit refunded'}{' '}
             ·{' '}
             <ExternalLink href={explorerBlockUrl(outcome.blockNumber)} mono>
               {shortHash(outcome.txHash)}
@@ -361,7 +361,7 @@ export default function App() {
         ) : record?.phase === 'proposed' ? (
           (() => {
             const left = record.proposal?.readyAt ? Math.max(0, record.proposal.readyAt - clock) : null;
-            return left === null ? 'Route proposed. Waiting out the safety delay…' : left > 0 ? `Route proposed. Safety delay: ${left}s left. The vault owner can veto it until then.` : 'Safety delay over. Finalising on-chain…';
+            return left === null ? 'Route proposed. Waiting out the safety delay…' : left > 0 ? `Route proposed. Safety delay: ${left}s left. The vault owner can veto it until then.` : 'Safety delay over. Finalising onchain…';
           })()
         ) : verdict && record?.phase === 'settling' ? (
           verdict.approved ? 'Sending funds to the agreed pools…' : 'Refunding your deposit…'
@@ -487,7 +487,7 @@ export default function App() {
                       <h2 id="preview-title" className="mb-4 text-lg font-semibold tracking-tight">
                         Verdict preview
                       </h2>
-                      <VerdictCard status={previewVerdict.status} reason={previewVerdict.reason} allocations={previewVerdict.allocations} trace={previewVerdict.trace} note="Preview only — nothing was deposited" />
+                      <VerdictCard status={previewVerdict.status} reason={previewVerdict.reason} allocations={previewVerdict.allocations} trace={previewVerdict.trace} note="Preview only, nothing was deposited" />
                     </section>
                   ) : (
                     <section className="card p-6" aria-labelledby="how-title">
@@ -498,7 +498,7 @@ export default function App() {
                         {[
                           ['Deposit', `Your funds are escrowed in a vault contract on ${activeChain().name} together with your intent.`],
                           ['Adjudicate', 'GenLayer validators read the intent, apply guardrails and agree on a route. No single party decides.'],
-                          ['Settle', 'The vault re-checks the route on-chain (totals, whitelist) and only then pays the pools.'],
+                          ['Settle', 'The vault checks the route again onchain (totals, whitelist) and only then pays the pools.'],
                         ].map(([t, d], i) => (
                           <li key={t} className="flex gap-3">
                             <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-line2 text-xs text-muted">{i + 1}</span>

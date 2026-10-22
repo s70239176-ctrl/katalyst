@@ -6,7 +6,7 @@ interface VerdictCardProps {
   reason?: string | undefined;
   allocations: VerdictLeg[];
   trace: VerdictTrace | null;
-  /** Shown as a note above the table, e.g. "Preview — nothing was deposited". */
+  /** Shown as a note above the table, e.g. "Preview only, nothing was deposited". */
   note?: string;
 }
 
@@ -90,7 +90,7 @@ export function VerdictCard({ status, reason, allocations, trace, note }: Verdic
                     <span className={p.decision === 'selected' ? 'text-accent' : 'text-muted'}>{p.decision === 'selected' ? 'Selected' : 'Excluded'}</span>
                     <div className="text-xs text-subtle">{p.reason}</div>
                   </td>
-                  <td className="text-right font-medium tabular-nums">{p.percentage > 0 ? `${p.percentage}%` : '—'}</td>
+                  <td className="text-right font-medium tabular-nums">{p.percentage > 0 ? `${p.percentage}%` : '0%'}</td>
                 </tr>
               ))}
             </tbody>
