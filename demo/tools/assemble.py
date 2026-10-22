@@ -43,7 +43,7 @@ intro = BASE + f'''<body><div class="grid"></div><div class="glow"></div><div cl
 outro = BASE + f'''<body><div class="grid"></div><div class="glow"></div><div class="glow2"></div><div class="c">
 <div class="brand"><svg width="76" height="76" viewBox="0 0 64 64">{K}</svg><span>KATALYST</span></div>
 <p style="font-size:34px;color:#f3f6f8;margin-top:30px">GenLayer decides.&nbsp; Portaldot settles.&nbsp; <span style="color:#c4ff42">Anyone can verify.</span></p>
-<div class="row"><div class="box"><b>TRY IT</b><span class="mono">katalyst-ashen.vercel.app</span></div><div class="box"><b>SOURCE (MIT)</b><span class="mono">github.com/s70239176-ctrl/katalyst</span></div></div>
+<div class="row"><div class="box"><b>TRY IT</b><span class="mono">katalyst-intent.vercel.app</span></div><div class="box"><b>SOURCE (MIT)</b><span class="mono">github.com/s70239176-ctrl/katalyst</span></div></div>
 <p style="font-size:20px;margin-top:34px">Next: security audit &nbsp;·&nbsp; relayer quorum &nbsp;·&nbsp; real pool strategies &nbsp;·&nbsp; mainnet</p>
 <p style="font-size:15px;color:#65798b;margin-top:14px">Testnet software, unaudited.</p></div></body>'''
 (W / 'intro.html').write_text(intro, encoding='utf8')

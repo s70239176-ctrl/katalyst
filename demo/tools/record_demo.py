@@ -12,7 +12,7 @@ RAW.mkdir(exist_ok=True)
 for f in RAW.glob('*.webm'):
     f.unlink()
 
-SITE = 'https://katalyst-ashen.vercel.app'
+SITE = 'https://katalyst-intent.vercel.app'
 PROMPT = 'Maximize yield, but only A-Tier carbon pools, minimum 12% APY.'
 markers: dict[str, float] = {}
 

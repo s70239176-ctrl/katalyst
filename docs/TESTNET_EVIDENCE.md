@@ -67,7 +67,7 @@ npm --prefix frontend run cli -- verify 7 \
 ```
 
 Intent #7 reports 12 of 12 checks passed (deposit, settlement, who submitted it, commitment binding, validator consensus, same prompt, verdict equals what was paid, exact split, registered pools, fixed fee, route lock, safety delay). Intent #4 reports "the safety delay caught a bad route".
-The same check runs in the browser at `https://katalyst-ashen.vercel.app/#/verify/7`.
+The same check runs in the browser at `https://katalyst-intent.vercel.app/#/verify/7`.
 
 Regenerate the table above from the chain with `node --env-file=.env scripts/evidence.mjs` (in `relayer/`).
 

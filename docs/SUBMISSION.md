@@ -4,7 +4,7 @@ Copy these into the DoraHacks project form. Track: **Multi-Chain & Cross-Chain I
 
 ## Links
 
-- Live app: https://katalyst-ashen.vercel.app/
+- Live app: https://katalyst-intent.vercel.app/
 - GitHub (public, MIT): https://github.com/s70239176-ctrl/katalyst
 - Demo video (2:49): upload `demo/katalyst-demo.mp4` and paste the link here
 - Testnet evidence: [docs/TESTNET_EVIDENCE.md](TESTNET_EVIDENCE.md)

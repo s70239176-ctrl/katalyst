@@ -5,7 +5,7 @@ The MP4 is not committed (14 MB); upload it where you need it.
 
 ## What it shows
 
-Everything on screen is the live site, https://katalyst-ashen.vercel.app, talking to the real **Portaldot V3 testnet**.
+Everything on screen is the live site, https://katalyst-intent.vercel.app, talking to the real **Portaldot V3 testnet**.
 
 | Time | Scene | Real? |
 | --- | --- | --- |

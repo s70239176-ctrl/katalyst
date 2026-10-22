@@ -6,7 +6,7 @@ RAW = WORK / 'raw_tail'
 RAW.mkdir(exist_ok=True)
 for f in RAW.glob('*.webm'):
     f.unlink()
-SITE = 'https://katalyst-ashen.vercel.app'
+SITE = 'https://katalyst-intent.vercel.app'
 NONCE = json.load(open(WORK / 'markers.json'))['nonce']
 m = {}
 
